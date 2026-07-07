@@ -30,4 +30,4 @@ How it does any of that is not specified anywhere in this repository. That is th
 3. Run `/install-github-app` so @claude reviews your pull requests from Day 2
 4. Install OpenCode and sign in with your Go key
 
-Fill in `CLAUDE.md` before your first prompt.
+Stack: Python 3.11+ / pytest — see `CLAUDE.md`.
