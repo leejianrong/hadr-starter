@@ -12,8 +12,10 @@ flows left to right; each module is pure except `usgs.fetch` and the file write.
 | `geo.py` | Offline reverse-geocode + onshore (ray-casting over vendored Natural Earth) |
 | `decluster.py` | Group a mainshock + aftershocks into one sequence; flag swarms |
 | `severity.py` | Impact-based attention threshold (ADR-0004), named constants |
-| `render.py` | Deterministic four-section HTML (pure; times come from the `Report`) |
-| `sitrep.py` | Orchestrator / CLI entrypoint |
+| `state.py` | SQLite persistence between runs (ADR-0007) — last-published per cluster |
+| `changes.py` | Six loud-change triggers vs prior state (ADR-0006); `feed_ok` guard |
+| `render.py` | Deterministic four-section HTML + NEW/REVISED/CORRECTED flags + heartbeat |
+| `sitrep.py` | Orchestrator / CLI entrypoint (loads state, persists on good fetch) |
 
 Run:
 

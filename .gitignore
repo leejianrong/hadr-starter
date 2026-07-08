@@ -5,6 +5,9 @@ reports/
 # dashboard.html is the exception: it is the product, and it is committed.
 !dashboard.html
 
+# Between-run state — rebuilt from the feeds; not a source artifact.
+*.sqlite3
+
 # Secrets stay out of the repo and out of the agent's context.
 .env
 .env.*

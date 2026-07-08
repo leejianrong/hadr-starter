@@ -98,6 +98,34 @@ Verified: all `ADR-00NN` and `SPIKE-*.md` references resolve; no `3.11` remnants
   is byte-deterministic for a fixed input+publish-time (needed for the V2
   heartbeat / git-diffs).
 
+### 2026-07-08 — CI + linting (adopted from DEVELOPER-WORKFLOWS)
+
+Adopted the fast-gate / CI-merge-gate practices from `docs/DEVELOPER-WORKFLOWS.md`,
+scaled to a Python-only, offline-test project (skipped the web-app machinery:
+testcontainers, Playwright, service containers, Fly deploy). Added `ruff`
+(E/F/I, line-length 100), `.github/workflows/ci.yml` (ruff + pytest on PR/push to
+main, `uv --frozen`, cached), and a tracked `scripts/git-hooks/pre-push` mirroring
+CI. CLAUDE.md gained a Development workflow section. (PR #4, merged.)
+
+### 2026-07-08 — V2 built: state + change detection + heartbeat
+
+`docs/planning/SLICES.md` V2, all deterministic (still no model/schedule):
+
+- `state.py` — SQLite store (stdlib `sqlite3`, ADR-0007): last-published
+  severity/mag/depth/status/location per cluster, keyed stably, matched across
+  runs by USGS `ids` intersection (top-level id can change).
+- `changes.py` — the six loud triggers (ADR-0006): NEW, escalation (± when was
+  orange+), magnitude/location review (≥0.3 M / ≥50 km / depth reclass),
+  automatic→reviewed, withdrawal/retraction — with the **`feed_ok` guard** so an
+  outage never manufactures a deletion.
+- `render.py` — NEW/REVISED/CORRECTED flags, a corrections block, and a
+  quiet-vs-loud **heartbeat** line; the page still regenerates every run (ADR-0005).
+- `sitrep.py` — loads state before, persists after (only on a good fetch).
+
+Verified end-to-end on a captured live payload: run 1 → 2× NEW (LOUD); run 2 (same
+feed) → quiet, "no changes since last run"; run 3 (feed emptied) → 2× CORRECTED.
+Suite now 46 tests. State DB (`*.sqlite3`) is gitignored.
+
 ## Open questions
 
 - ReliefWeb API `appname` approval is a manual, no-SLA process (Google Form +

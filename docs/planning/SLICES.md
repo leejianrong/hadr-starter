@@ -70,7 +70,16 @@ its coverage — with **no** model call, state, or scheduling yet.
 
 ---
 
-<!-- V2–V5 expand into their own sections (Goal / DoD / Out of scope) when picked
+## V2 — persisted state + change detection + heartbeat ✅ built (2026-07-08)
+
+Adds `scripts/state.py` (SQLite, ADR-0007), `scripts/changes.py` (six loud
+triggers, ADR-0006), and NEW/REVISED/CORRECTED flags + a quiet-vs-loud heartbeat
+line in the renderer. **DoD met:** run twice sharing state → first run flags NEW
+(loud), an unchanged second run is quiet with a fresh timestamp, and a
+withdrawn/downgraded event yields an explicit CORRECTED line — with the `feed_ok`
+guard so an outage never manufactures a deletion. Still no model / schedule (V3).
+
+<!-- V3–V5 expand into their own sections (Goal / DoD / Out of scope) when picked
      up. V1 is detailed now because it is the locked next build. Keep this doc in
      sync with SHAPING.md (parts) and BREADBOARD.md (affordances) — ripple both
      ways. -->

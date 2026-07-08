@@ -9,7 +9,7 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from .model import SGT, Cluster, FeedHealth, Quake, Report
+from .model import SGT, Cluster, FeedHealth, Quake, Report, Retraction
 
 _ALERT_COLOURS = {
     "red": "#c0392b",
@@ -66,15 +66,37 @@ def _sequence(c: Cluster) -> str:
     return ""
 
 
+def _flag(c: Cluster) -> str:
+    if c.change == "NEW":
+        return '<span class="flag flag-new">NEW</span>'
+    if c.change == "REVISED":
+        title = f' title="{html.escape(c.change_reason)}"' if c.change_reason else ""
+        arrow = " ↑" if "escalated" in c.change_reason else ""
+        return f'<span class="flag flag-rev"{title}>REVISED{arrow}</span>'
+    return ""
+
+
 def _event_line(c: Cluster, now: datetime) -> str:
     q = c.mainshock
+    reason = ""
+    if c.change_reason:
+        reason = f' <span class="muted">— {html.escape(c.change_reason)}</span>'
     return (
         '<li class="event">'
-        f"{_chip(q.alert)}"
+        f"{_flag(c)}{_chip(q.alert)}"
         f'<span class="what">{_where(q)}</span>'
         f'<span class="meta">{_mag(q)}{_sequence(c)} · depth {q.depth_km:.0f} km'
-        f' · {_sgt(q.time)} ({_age(q.time, now)})</span>'
+        f' · {_sgt(q.time)} ({_age(q.time, now)}){reason}</span>'
         "</li>"
+    )
+
+
+def _retraction_line(r: Retraction) -> str:
+    mag = f" M{r.last_mag:.1f}" if r.last_mag is not None else ""
+    colour = f" ({r.last_alert})" if r.last_alert else ""
+    return (
+        '<li class="corr"><span class="flag flag-corr">CORRECTED</span>'
+        f"{html.escape(r.place)}{mag}{colour} — {html.escape(r.reason)}</li>"
     )
 
 
@@ -103,7 +125,20 @@ def render(report: Report) -> str:
         sudden = ('<p class="nothing">No new sudden-onset events crossed threshold '
                   f'in the {html.escape(window)}.</p>')
 
+    if report.retractions:
+        items = "\n".join(_retraction_line(r) for r in report.retractions)
+        corrections = f'<ul class="events">\n{items}\n</ul>'
+    else:
+        corrections = ""
+
+    # Heartbeat line: quiet vs loud is visible, and the timestamp proves liveness.
+    n_changes = sum(1 for c in report.clusters if c.change) + len(report.retractions)
+    heartbeat = (f"{n_changes} update(s) since last run" if report.is_loud
+                 else "no changes since last run")
+
     feeds = "\n".join(_feed_line(f, now) for f in report.feeds)
+    sub = (f"Published {_sgt(report.publish_utc)} · "
+           f"window: {html.escape(window)} · {heartbeat}")
 
     return f"""<!doctype html>
 <html lang="en">
@@ -127,6 +162,12 @@ def render(report: Report) -> str:
   .chip {{ display: inline-block; color: #fff; font-size: .72rem; font-weight: 700;
            padding: .1rem .4rem; border-radius: 3px; margin-right: .5rem; vertical-align: 1px; }}
   .chip-none {{ background: #95a5a6; color: #fff; }}
+  .flag {{ display: inline-block; font-size: .62rem; font-weight: 700; padding: .05rem .35rem;
+           border-radius: 3px; margin-right: .4rem; letter-spacing: .03em; color: #fff; }}
+  .flag-new {{ background: #2980b9; }}
+  .flag-rev {{ background: #8e44ad; }}
+  .flag-corr {{ background: #c0392b; }}
+  .corr {{ padding: .45rem 0; border-bottom: 1px solid #8882; }}
   .what {{ font-weight: 600; }}
   .meta {{ display: block; color: #7f8c8d; font-size: .85rem; margin-top: .15rem; }}
   .muted {{ color: #95a5a6; }}
@@ -138,11 +179,12 @@ def render(report: Report) -> str:
 </head>
 <body>
 <h1>HADR morning situation report</h1>
-<p class="sub">Published {_sgt(report.publish_utc)} · window: {html.escape(window)}</p>
+<p class="sub">{sub}</p>
 <div class="banner">{html.escape(report.coverage_note)}</div>
 
 <h2>Sudden-onset · {html.escape(window)}</h2>
 {sudden}
+{corrections}
 
 <h2>Slow-onset / ongoing</h2>
 <p class="nothing">No slow-onset sources yet — GDACS and ReliefWeb arrive in later slices.</p>

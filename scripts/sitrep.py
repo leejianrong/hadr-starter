@@ -1,11 +1,13 @@
-"""V1 orchestrator — USGS earthquakes → one-shot dashboard.html.
+"""Orchestrator — USGS earthquakes → dashboard.html (V1 + V2).
 
-Deterministic pipeline, no model / no state / no schedule (those are V2/V3):
-fetch → normalize → decluster → threshold → render. Run it:
+Deterministic pipeline (no model, no schedule — those are V3):
+fetch → normalize → decluster → threshold → detect change vs persisted state →
+render. The page is regenerated every run (the timestamp is the heartbeat); the
+change-detector decides what is loud. Run it:
 
-    uv run python -m scripts.sitrep                 # live USGS fetch
+    uv run python -m scripts.sitrep                 # live fetch → dashboard.html
     uv run python -m scripts.sitrep --fixture F     # offline, from a saved payload
-    uv run python -m scripts.sitrep --out page.html # choose the output path
+    uv run python -m scripts.sitrep --state S       # choose the state DB path
 """
 from __future__ import annotations
 
@@ -15,10 +17,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import changes, render, severity, usgs
 from . import decluster as dc
-from . import render, severity, usgs
 from .geo import Geo
 from .model import FeedHealth, Report, from_ms
+from .state import DEFAULT_PATH, StateRow, StateStore
 
 WINDOW_HOURS = 24
 COVERAGE_NOTE = (
@@ -28,9 +31,14 @@ COVERAGE_NOTE = (
 log = logging.getLogger("sitrep")
 
 
-def build_report(raw: dict, final_url: str, feed_ok: bool, feed_note: str,
-                 geo: Geo, now_utc: datetime) -> Report:
-    """Pure pipeline over an already-fetched payload — the testable core."""
+def build_report(
+    raw: dict, final_url: str, feed_ok: bool, feed_note: str, geo: Geo,
+    now_utc: datetime, prior: dict[str, StateRow],
+) -> tuple[Report, changes.DetectResult]:
+    """Pure pipeline over an already-fetched payload — the testable core.
+
+    Returns the Report and the DetectResult (whose `next_rows` the caller persists).
+    """
     window_start = now_utc - timedelta(hours=WINDOW_HOURS)
     quakes = usgs.parse(raw, geo=geo)
     in_window = [q for q in quakes if window_start <= q.time <= now_utc]
@@ -39,18 +47,23 @@ def build_report(raw: dict, final_url: str, feed_ok: bool, feed_note: str,
     kept = [c for c in clusters if severity.passes_threshold(c.mainshock)]
     kept.sort(key=severity.cluster_sort_key, reverse=True)
 
+    result = changes.detect(prior, kept, feed_ok=feed_ok, now=now_utc)
+
     gen = usgs.generated_ms(raw)
     as_of = from_ms(gen) if gen else (now_utc if feed_ok else None)
     feed = FeedHealth(name="USGS", url=final_url, ok=feed_ok, as_of=as_of, note=feed_note)
 
-    return Report(
+    report = Report(
         publish_utc=now_utc,
         window_start_utc=window_start,
         window_end_utc=now_utc,
-        clusters=kept,
+        clusters=result.clusters,
         feeds=[feed],
         coverage_note=COVERAGE_NOTE,
+        retractions=result.retractions,
+        is_loud=result.is_loud,
     )
+    return report, result
 
 
 def _load(args) -> tuple[dict, str, bool, str]:
@@ -62,15 +75,16 @@ def _load(args) -> tuple[dict, str, bool, str]:
         raw, final_url = usgs.fetch()
         log.info("fetched USGS feed: %s", final_url)  # the FINAL url (CLAUDE.md #2)
         return raw, final_url, True, ""
-    except Exception as exc:  # noqa: BLE001 — degrade loud, never crash the sitrep
+    except Exception as exc:  # degrade loud, never crash the sitrep
         log.error("USGS fetch failed: %s", exc)
         return {"features": [], "metadata": {}}, usgs.FEED_URL, False, f"fetch failed: {exc}"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="HADR morning sitrep (V1, USGS only)")
+    parser = argparse.ArgumentParser(description="HADR morning sitrep (USGS)")
     parser.add_argument("--fixture", help="read a saved USGS payload instead of fetching")
     parser.add_argument("--out", default="dashboard.html", help="output HTML path")
+    parser.add_argument("--state", default=DEFAULT_PATH, help="state DB path")
     parser.add_argument("--now", help="ISO-8601 UTC publish time (default: now)")
     args = parser.parse_args(argv)
 
@@ -79,12 +93,22 @@ def main(argv: list[str] | None = None) -> int:
            if args.now else datetime.now(timezone.utc))
 
     geo = Geo()
-    raw, final_url, feed_ok, note = _load(args)
-    report = build_report(raw, final_url, feed_ok, note, geo, now)
+    store = StateStore(args.state)
+    prior = store.load()
 
-    out = Path(args.out)
-    out.write_text(render.render(report))
-    log.info("wrote %s — %d event(s) shown, feed_ok=%s", out, len(report.clusters), feed_ok)
+    raw, final_url, feed_ok, note = _load(args)
+    report, result = build_report(raw, final_url, feed_ok, note, geo, now, prior)
+
+    Path(args.out).write_text(render.render(report))
+
+    # Persist only on a good fetch — never overwrite state from an outage (ADR-0007).
+    if feed_ok:
+        store.replace(result.next_rows)
+    store.close()
+
+    verdict = "LOUD" if report.is_loud else "quiet"
+    log.info("wrote %s — %d shown, %d retraction(s), %s, feed_ok=%s",
+             args.out, len(report.clusters), len(report.retractions), verdict, feed_ok)
     return 0
 
 

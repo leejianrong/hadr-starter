@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HADR morning sitrep — 2026-07-08 15:26 SGT</title>
+<title>HADR morning sitrep — 2026-07-08 16:42 SGT</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 15px/1.5 system-ui, sans-serif; max-width: 820px; margin: 2rem auto;
@@ -20,6 +20,12 @@
   .chip { display: inline-block; color: #fff; font-size: .72rem; font-weight: 700;
            padding: .1rem .4rem; border-radius: 3px; margin-right: .5rem; vertical-align: 1px; }
   .chip-none { background: #95a5a6; color: #fff; }
+  .flag { display: inline-block; font-size: .62rem; font-weight: 700; padding: .05rem .35rem;
+           border-radius: 3px; margin-right: .4rem; letter-spacing: .03em; color: #fff; }
+  .flag-new { background: #2980b9; }
+  .flag-rev { background: #8e44ad; }
+  .flag-corr { background: #c0392b; }
+  .corr { padding: .45rem 0; border-bottom: 1px solid #8882; }
   .what { font-weight: 600; }
   .meta { display: block; color: #7f8c8d; font-size: .85rem; margin-top: .15rem; }
   .muted { color: #95a5a6; }
@@ -31,21 +37,22 @@
 </head>
 <body>
 <h1>HADR morning situation report</h1>
-<p class="sub">Published 2026-07-08 15:26 SGT · window: last 24h ending 2026-07-08 15:26 SGT</p>
+<p class="sub">Published 2026-07-08 16:42 SGT · window: last 24h ending 2026-07-08 16:42 SGT · 2 update(s) since last run</p>
 <div class="banner">Coverage: earthquakes only (USGS). No flood/cyclone/epidemic/conflict monitoring yet. Onshore is approximated as inside a country polygon.</div>
 
-<h2>Sudden-onset · last 24h ending 2026-07-08 15:26 SGT</h2>
+<h2>Sudden-onset · last 24h ending 2026-07-08 16:42 SGT</h2>
 <ul class="events">
-<li class="event"><span class="chip chip-none">NO PAGER</span><span class="what">10 km WSW of Orotina, Costa Rica [CRI]</span><span class="meta">M5.3<span class='muted'> mww</span> · depth 48 km · 2026-07-08 02:11 SGT (13h ago)</span></li>
-<li class="event"><span class="chip chip-none">NO PAGER</span><span class="what">13 km W of Changning, China [CHN]</span><span class="meta">M5.1<span class='muted'> mww</span><span class="muted"> — swarm, no dominant event (3 events, largest M5.0)</span> · depth 10 km · 2026-07-08 06:12 SGT (9h ago)</span></li>
+<li class="event"><span class="flag flag-new">NEW</span><span class="chip chip-none">NO PAGER</span><span class="what">10 km WSW of Orotina, Costa Rica [CRI]</span><span class="meta">M5.3<span class='muted'> mww</span> · depth 48 km · 2026-07-08 02:11 SGT (14h ago)</span></li>
+<li class="event"><span class="flag flag-new">NEW</span><span class="chip chip-none">NO PAGER</span><span class="what">13 km W of Changning, China [CHN]</span><span class="meta">M5.1<span class='muted'> mww</span><span class="muted"> — swarm, no dominant event (3 events, largest M5.0)</span> · depth 10 km · 2026-07-08 06:12 SGT (10h ago)</span></li>
 </ul>
 
+
 <h2>Slow-onset / ongoing</h2>
-<p class="nothing">No slow-onset sources integrated yet (GDACS / ReliefWeb arrive in later slices).</p>
+<p class="nothing">No slow-onset sources yet — GDACS and ReliefWeb arrive in later slices.</p>
 
 <h2>Feed health</h2>
 <ul class="feeds">
-<li><span class="ok">● up</span> <strong>USGS</strong> · as of 2026-07-08 15:26 SGT (0m ago)<br><span class="url">https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson</span></li>
+<li><span class="ok">● up</span> <strong>USGS</strong> · as of 2026-07-08 16:42 SGT (0m ago)<br><span class="url">https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson</span></li>
 </ul>
 
 <footer>
