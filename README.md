@@ -30,4 +30,5 @@ How it does any of that is not specified anywhere in this repository. That is th
 3. Run `/install-github-app` so @claude reviews your pull requests from Day 2
 4. Install OpenCode and sign in with your Go key
 
-Stack: Python 3.11+ / pytest — see `CLAUDE.md`.
+Stack: Python 3.12+ managed with `uv` / pytest — see `CLAUDE.md`. Run
+`uv sync` to set up, `uv run pytest` to test.
