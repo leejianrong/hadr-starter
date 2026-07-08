@@ -168,6 +168,10 @@ def render(report: Report) -> str:
   .flag-rev {{ background: #8e44ad; }}
   .flag-corr {{ background: #c0392b; }}
   .corr {{ padding: .45rem 0; border-bottom: 1px solid #8882; }}
+  .narrative {{ background: #2980b911; border-left: 3px solid #2980b9; padding: .5rem .9rem;
+                margin: 1rem 0; }}
+  .narrative h2 {{ border: 0; margin: .1rem 0 .3rem; }}
+  .narrative p {{ margin: .3rem 0; }}
   .what {{ font-weight: 600; }}
   .meta {{ display: block; color: #7f8c8d; font-size: .85rem; margin-top: .15rem; }}
   .muted {{ color: #95a5a6; }}
@@ -181,7 +185,7 @@ def render(report: Report) -> str:
 <h1>HADR morning situation report</h1>
 <p class="sub">{sub}</p>
 <div class="banner">{html.escape(report.coverage_note)}</div>
-
+<!--NARRATIVE-->
 <h2>Sudden-onset · {html.escape(window)}</h2>
 {sudden}
 {corrections}

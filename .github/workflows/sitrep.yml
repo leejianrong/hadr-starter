@@ -1,0 +1,74 @@
+# Morning sitrep — the "deploy" for this project.
+#
+# The shape (from the original stub) is the point:
+#   1. a deterministic script decides whether anything changed AND always
+#      regenerates dashboard.html;
+#   2. the model runs ONLY if it did, to write the narrative prose.
+# The model never decides whether to wake up.
+name: Morning sitrep
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "30 0 * * *"   # 08:30 Asia/Singapore (UTC+8) = 00:30 UTC. Cron is UTC.
+
+permissions:
+  contents: write          # commit the regenerated dashboard.html
+  id-token: write          # for claude-code-action
+
+jobs:
+  sitrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+
+      # Persist change-detection state across scheduled runs (rolling cache):
+      # restore the most recent state, save a fresh copy keyed by this run.
+      - uses: actions/cache@v4
+        with:
+          path: hadr-state.sqlite3
+          key: hadr-state-${{ github.run_id }}
+          restore-keys: hadr-state-
+
+      # 1. Deterministic: always regenerate the page + emit the brief with `loud`.
+      - id: run
+        run: |
+          uv run --frozen python -m scripts.sitrep --brief brief.json
+          echo "loud=$(jq -r .loud brief.json)" >> "$GITHUB_OUTPUT"
+
+      # 2. Narrative — ONLY on a loud change. The model writes prose to narrative.md.
+      - if: steps.run.outputs.loud == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Follow the instructions in skills/sitrep/SKILL.md exactly.
+            Read brief.json in the repo root and write the narrative to narrative.md.
+            Do not edit any other file.
+          claude_args: '--model claude-haiku-4-5-20251001 --allowedTools Read,Write'
+
+      # 3. Deterministic inject of the prose (model stays out of the HTML/number path).
+      - if: steps.run.outputs.loud == 'true'
+        run: |
+          if [ -f narrative.md ]; then
+            uv run --frozen python -m scripts.inject dashboard.html narrative.md
+          fi
+
+      # 4. Publish: commit the regenerated dashboard (the product artefact).
+      - run: |
+          if git diff --quiet -- dashboard.html; then
+            echo "dashboard.html unchanged — nothing to publish"
+          else
+            git config user.name "hadr-bot"
+            git config user.email "hadr-bot@users.noreply.github.com"
+            git add dashboard.html
+            git commit -m "chore: morning sitrep $(date -u +%FT%TZ) (loud=${{ steps.run.outputs.loud }})"
+            git push
+          fi
+
+      - run: echo "### Morning sitrep — loud=${{ steps.run.outputs.loud }}" >> "$GITHUB_STEP_SUMMARY"

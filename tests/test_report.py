@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from scripts.sitrep import build_report
+from scripts.sitrep import build_brief, build_report
 from tests.helpers import raw_feature, raw_feed
 
 NOW = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
@@ -58,3 +58,19 @@ def test_first_run_marks_everything_new_and_loud():
     assert report.is_loud is True
     assert report.clusters[0].change == "NEW"
     assert len(result.next_rows) == 1
+
+
+def test_brief_reflects_loud_changes():
+    feed = raw_feed([raw_feature(eid="in", mag=6.5, time_ms=_ms(2026, 7, 8, 6))])
+    report, _ = build_report(feed, "file://x", True, "", FakeGeo(), NOW, {})
+    brief = build_brief(report)
+    assert brief["loud"] is True
+    assert len(brief["changes"]) == 1
+    assert brief["changes"][0]["change"] == "NEW"
+
+
+def test_brief_quiet_run():
+    report, _ = build_report(raw_feed([]), "file://x", True, "", FakeGeo(), NOW, {})
+    brief = build_brief(report)
+    assert brief["loud"] is False
+    assert brief["changes"] == []

@@ -14,8 +14,15 @@ flows left to right; each module is pure except `usgs.fetch` and the file write.
 | `severity.py` | Impact-based attention threshold (ADR-0004), named constants |
 | `state.py` | SQLite persistence between runs (ADR-0007) — last-published per cluster |
 | `changes.py` | Six loud-change triggers vs prior state (ADR-0006); `feed_ok` guard |
-| `render.py` | Deterministic four-section HTML + NEW/REVISED/CORRECTED flags + heartbeat |
-| `sitrep.py` | Orchestrator / CLI entrypoint (loads state, persists on good fetch) |
+| `render.py` | Deterministic four-section HTML + flags + heartbeat + `<!--NARRATIVE-->` slot |
+| `sitrep.py` | Orchestrator / CLI (state, `--brief` for the narrator, persists on good fetch) |
+| `inject.py` | Deterministically inject the model's prose into the narrative slot (escaped) |
+
+The model narrator is **not** here — it lives in the `/sitrep` skill
+(`skills/sitrep/SKILL.md`), invoked only on a loud change by
+`.github/workflows/sitrep.yml`. The model writes prose to `narrative.md`;
+`inject.py` places it. The model never touches the HTML, the numbers, or the
+decision to run.
 
 Run:
 
