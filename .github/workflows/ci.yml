@@ -1,0 +1,29 @@
+# The merge gate: lint + tests on every PR and every push to main.
+# Fast because the whole suite is offline (fixtures + vendored data) — no DB,
+# no network, no browser. Mirrors the local pre-push hook, exhaustively.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (with cache)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync deps (locked)
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run --frozen ruff check .
+
+      - name: Tests (pytest)
+        run: uv run --frozen pytest -q

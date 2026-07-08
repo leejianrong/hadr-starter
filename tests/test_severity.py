@@ -36,7 +36,8 @@ def test_moderate_deep_offshore_hidden():
 
 
 def test_below_onshore_floor_hidden():
-    assert passes_threshold(make_quake(alert=None, mag=4.9, depth_km=5, onshore=True, sig=100)) is False
+    q = make_quake(alert=None, mag=4.9, depth_km=5, onshore=True, sig=100)
+    assert passes_threshold(q) is False
 
 
 def test_magnitude_type_guard():

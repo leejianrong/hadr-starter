@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Fast local gate — mirrors the CI checks so a push never lands red.
+# The whole suite is offline and sub-second, so we run all of it (no fast/slow
+# split needed yet). Install once per clone:
+#     ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
+# Bypass for a one-off with:  git push --no-verify
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "pre-push ▸ ruff"
+uv run ruff check .
+
+echo "pre-push ▸ pytest"
+uv run pytest -q
+
+echo "pre-push ▸ ok"

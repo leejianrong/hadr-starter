@@ -11,12 +11,20 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "ruff>=0.15.20",
 ]
 
 # This is a runnable application (scripts/ + tests/), not a distributable library,
 # so uv manages the environment without trying to build/install the project itself.
 [tool.uv]
 package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]   # pycodestyle errors, pyflakes, import sorting
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

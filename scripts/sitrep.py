@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="HADR morning sitrep (V1, USGS only)")
     parser.add_argument("--fixture", help="read a saved USGS payload instead of fetching")
     parser.add_argument("--out", default="dashboard.html", help="output HTML path")
-    parser.add_argument("--now", help="ISO-8601 UTC publish time (default: now); for reproducible output")
+    parser.add_argument("--now", help="ISO-8601 UTC publish time (default: now)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
