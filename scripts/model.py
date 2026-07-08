@@ -59,6 +59,8 @@ class Cluster:
     mainshock: Quake
     aftershocks: list[Quake] = field(default_factory=list)
     is_swarm: bool = False       # no dominant mainshock (set by declusterer)
+    change: str | None = None    # None (quiet) | "NEW" | "REVISED" (set by change detection)
+    change_reason: str = ""      # human note, e.g. "escalated to orange; reviewed"
 
     @property
     def count(self) -> int:
@@ -83,6 +85,19 @@ class FeedHealth:
 
 
 @dataclass
+class Retraction:
+    """A previously-published event that vanished or fell below threshold.
+
+    Surfaced as an explicit correction (ADR-0009) — never a silent drop.
+    """
+
+    place: str
+    last_alert: str | None
+    last_mag: float | None
+    reason: str                  # e.g. "no longer listed" / "fell below threshold"
+
+
+@dataclass
 class Report:
     """Everything the renderer needs for one morning page."""
 
@@ -92,3 +107,5 @@ class Report:
     clusters: list[Cluster]      # thresholded + ranked, most severe first
     feeds: list[FeedHealth]
     coverage_note: str
+    retractions: list[Retraction] = field(default_factory=list)
+    is_loud: bool = False        # any NEW/REVISED/retraction since last run (ADR-0005)
