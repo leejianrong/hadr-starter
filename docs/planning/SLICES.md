@@ -79,7 +79,21 @@ line in the renderer. **DoD met:** run twice sharing state → first run flags N
 withdrawn/downgraded event yields an explicit CORRECTED line — with the `feed_ok`
 guard so an outage never manufactures a deletion. Still no model / schedule (V3).
 
-<!-- V3–V5 expand into their own sections (Goal / DoD / Out of scope) when picked
+## V3 — model narrator + notification + 08:30 routine ✅ built (2026-07-08)
+
+Wires the expensive layer, guarded by the deterministic one (ADR-0005). `sitrep.py`
+now emits a `--brief` JSON with a `loud` flag and leaves a `<!--NARRATIVE-->` slot
+in the page. `.github/workflows/sitrep.yml` (schedule 00:30 UTC = 08:30 SGT +
+manual dispatch): (1) always regenerates `dashboard.html` + brief; (2) **only if
+`loud`** invokes `anthropics/claude-code-action` running the `/sitrep` skill
+(`skills/sitrep/SKILL.md`, Haiku 4.5) to write `narrative.md`; (3) `scripts/inject.py`
+places the prose deterministically; (4) commits the dashboard (the "publish") and
+writes a job-summary line (the notification hook). State persists across runs via a
+rolling `actions/cache`. **DoD met** for the deterministic pieces (brief/loud flag,
+injection, marker) — verified locally; the model call itself runs in CI with the
+repo's existing `CLAUDE_CODE_OAUTH_TOKEN`.
+
+<!-- V4–V5 expand into their own sections (Goal / DoD / Out of scope) when picked
      up. V1 is detailed now because it is the locked next build. Keep this doc in
      sync with SHAPING.md (parts) and BREADBOARD.md (affordances) — ripple both
      ways. -->

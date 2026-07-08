@@ -126,6 +126,31 @@ Verified end-to-end on a captured live payload: run 1 → 2× NEW (LOUD); run 2 
 feed) → quiet, "no changes since last run"; run 3 (feed emptied) → 2× CORRECTED.
 Suite now 46 tests. State DB (`*.sqlite3`) is gitignored.
 
+### 2026-07-08 — V3 built: model narrator + 08:30 routine
+
+The two-layer design goes live (ADR-0005), still deterministic where it must be:
+
+- `sitrep.py --brief` writes a JSON brief with a `loud` flag + the changed
+  clusters/retractions; `render.py` leaves a `<!--NARRATIVE-->` slot.
+- `skills/sitrep/SKILL.md` — the `/sitrep` skill (the course's required skill):
+  reads the brief, writes 2–4 sentences of attributed, preliminary-labelled prose
+  to `narrative.md`, invents no numbers. Model note: **Haiku 4.5**.
+- `scripts/inject.py` — deterministically injects the prose into the slot
+  (escaped), keeping the model out of the HTML/number path (ADR-0002).
+- `.github/workflows/sitrep.yml` (renamed from `.disabled`): schedule
+  **00:30 UTC = 08:30 SGT** + dispatch. Deterministic step always regenerates the
+  page + brief; the model step (`anthropics/claude-code-action`, same
+  `CLAUDE_CODE_OAUTH_TOKEN` as `claude.yml`) runs **only if `loud`**; inject; commit
+  `dashboard.html` (the publish) + a job-summary line. State persists across runs
+  via a rolling `actions/cache`.
+
+Deterministic pieces verified locally end-to-end (brief/loud flag → inject →
+quiet). The `claude-code-action` call runs in CI. Suite now 53 tests; ruff clean.
+
+**Notification** is currently the dashboard commit + the Actions job summary; a
+push/Slack channel is a future hook (needs a secret). **State across CI runs** uses
+`actions/cache`; if it's evicted, that day re-marks events NEW (acceptable).
+
 ## Open questions
 
 - ReliefWeb API `appname` approval is a manual, no-SLA process (Google Form +

@@ -66,6 +66,40 @@ def build_report(
     return report, result
 
 
+def build_brief(report: Report) -> dict:
+    """Machine-readable facts for the model narrator (V3). Only the loud items.
+
+    The model narrates from this; it must invent no numbers not present here
+    (ADR-0002). The `loud` flag is what the CI workflow branches on.
+    """
+    return {
+        "loud": report.is_loud,
+        "publish_utc": report.publish_utc.isoformat(),
+        "coverage": report.coverage_note,
+        "changes": [
+            {
+                "place": c.mainshock.place,
+                "iso3": list(c.mainshock.iso3),
+                "mag": c.mainshock.mag,
+                "mag_type": c.mainshock.mag_type,
+                "alert": c.mainshock.alert,
+                "depth_km": c.mainshock.depth_km,
+                "change": c.change,
+                "reason": c.change_reason,
+                "aftershocks": len(c.aftershocks),
+                "swarm": c.is_swarm,
+            }
+            for c in report.clusters
+            if c.change
+        ],
+        "retractions": [
+            {"place": r.place, "last_alert": r.last_alert, "last_mag": r.last_mag,
+             "reason": r.reason}
+            for r in report.retractions
+        ],
+    }
+
+
 def _load(args) -> tuple[dict, str, bool, str]:
     """Return (raw, final_url, feed_ok, note). Degrade loud on fetch failure."""
     if args.fixture:
@@ -85,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fixture", help="read a saved USGS payload instead of fetching")
     parser.add_argument("--out", default="dashboard.html", help="output HTML path")
     parser.add_argument("--state", default=DEFAULT_PATH, help="state DB path")
+    parser.add_argument("--brief", help="write a JSON brief (loud flag + changes) for the narrator")
     parser.add_argument("--now", help="ISO-8601 UTC publish time (default: now)")
     args = parser.parse_args(argv)
 
@@ -100,6 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     report, result = build_report(raw, final_url, feed_ok, note, geo, now, prior)
 
     Path(args.out).write_text(render.render(report))
+
+    if args.brief:
+        Path(args.brief).write_text(json.dumps(build_brief(report), indent=2))
 
     # Persist only on a good fetch — never overwrite state from an outage (ADR-0007).
     if feed_ok:
