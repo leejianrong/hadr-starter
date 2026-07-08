@@ -2,12 +2,13 @@
 
 ## Language & tooling
 
-Python 3.11+. Standard library first; add a dependency only when it earns its
-place. `requests` for HTTP, `pytest` for tests.
+Python 3.12+, managed with `uv` (`pyproject.toml` + `uv.lock`). Standard library
+first; add a dependency only when it earns its place. `requests` for HTTP,
+`pytest` for tests. Add deps with `uv add` (dev deps with `uv add --dev`).
 
 ## Test command
 
-`pytest` (run from the repo root).
+`uv run pytest` (run from the repo root).
 
 ## Conventions
 
