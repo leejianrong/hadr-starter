@@ -11,7 +11,10 @@ SQUARE = {
     "features": [{
         "type": "Feature",
         "properties": {"iso3": "AAA", "name": "Squareland"},
-        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
+        },
     }],
 }
 

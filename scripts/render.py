@@ -9,7 +9,7 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from .model import Cluster, FeedHealth, Quake, Report, SGT
+from .model import SGT, Cluster, FeedHealth, Quake, Report
 
 _ALERT_COLOURS = {
     "red": "#c0392b",
@@ -44,7 +44,8 @@ def _where(q: Quake) -> str:
     if q.iso3:
         return html.escape(f"{q.place} [{', '.join(q.iso3)}]")
     tag = "offshore" if q.is_offshore else q.place
-    return html.escape(q.place or tag) + (' <span class="muted">(offshore)</span>' if q.is_offshore else "")
+    marker = ' <span class="muted">(offshore)</span>' if q.is_offshore else ""
+    return html.escape(q.place or tag) + marker
 
 
 def _mag(q: Quake) -> str:
@@ -85,7 +86,10 @@ def _feed_line(f: FeedHealth, now: datetime) -> str:
         status = '<span class="down">● UNREACHABLE</span>'
         asof = f"last good {_sgt(f.as_of)}" if f.as_of else "no data"
     note = f' — {html.escape(f.note)}' if f.note else ""
-    return f'<li>{status} <strong>{html.escape(f.name)}</strong> · {asof}{note}<br><span class="url">{html.escape(f.url)}</span></li>'
+    return (
+        f'<li>{status} <strong>{html.escape(f.name)}</strong> · {asof}{note}'
+        f'<br><span class="url">{html.escape(f.url)}</span></li>'
+    )
 
 
 def render(report: Report) -> str:
@@ -141,7 +145,7 @@ def render(report: Report) -> str:
 {sudden}
 
 <h2>Slow-onset / ongoing</h2>
-<p class="nothing">No slow-onset sources integrated yet (GDACS / ReliefWeb arrive in later slices).</p>
+<p class="nothing">No slow-onset sources yet — GDACS and ReliefWeb arrive in later slices.</p>
 
 <h2>Feed health</h2>
 <ul class="feeds">
