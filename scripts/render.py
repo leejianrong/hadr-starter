@@ -9,7 +9,17 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from .model import SGT, Cluster, FeedHealth, GdacsEvent, Quake, Report, ReportItem, Retraction
+from .model import (
+    GLIDE_HAZARD,
+    SGT,
+    Cluster,
+    FeedHealth,
+    GdacsEvent,
+    Quake,
+    Report,
+    ReportItem,
+    Retraction,
+)
 
 _HAZARD_LABEL = {
     "EQ": "Earthquake", "TC": "Tropical cyclone", "FL": "Flood",
@@ -126,9 +136,48 @@ def _provenance(item: ReportItem) -> str:
     lines = ""
     if bits:
         lines += f'<span class="prov">{" · ".join(bits)}</span>'
+    # ReliefWeb stacked onto a sudden-onset line: an INDEPENDENT curated confirmation
+    # (unlike EQ↔NEIC). Attributed, shown alongside — figures are never summed across
+    # feeds (ADR-0008). On RSS we stack the confirmation + GLIDE, not casualty numbers.
+    if item.reliefweb is not None:
+        d = item.reliefweb
+        curated = f" (curated {_sgt(d.pub_date)})" if d.pub_date else ""
+        glide = f" · GLIDE {html.escape(d.glide)}" if d.glide else ""
+        lines += (f'<span class="prov stack">＋ ReliefWeb{curated}: '
+                  f'{html.escape(d.title)}{glide} — independent confirmation; '
+                  f'figures attributed, never summed</span>')
     for note in item.cross_links:
         lines += f'<span class="prov xlink">↔ {html.escape(note)}</span>'
     return lines
+
+
+def _reliefweb_line(item: ReportItem, now: datetime) -> str:
+    """A slow-onset / curated line (U3) — window-exempt. ReliefWeb carries no alert
+    colour (severity there is 'a human made a page'), so the chip states the floor."""
+    d = item.reliefweb
+    hazard = GLIDE_HAZARD.get(d.hazard_code, d.hazard_code) if d.hazard_code else ""
+    where = f" [{', '.join(d.iso3)}]" if d.iso3 else ""
+    curated = f"curated {_sgt(d.pub_date)} ({_age(d.pub_date, now)})" if d.pub_date else "curated —"
+    glide = f' · GLIDE {html.escape(d.glide)}' if d.glide else ""
+    hz = f'<span class="muted">{hazard}</span> · ' if hazard else ""
+    summary = ""
+    if d.summary:
+        snippet = d.summary if len(d.summary) <= 220 else d.summary[:217].rstrip() + "…"
+        summary = f'<span class="prov">{html.escape(snippet)}</span>'
+    reason = ""
+    if item.change_reason:
+        reason = f' <span class="muted">— {html.escape(item.change_reason)}</span>'
+    url = html.escape(d.url)
+    return (
+        '<li class="event">'
+        f'{_flag(item.change, item.change_reason)}'
+        '<span class="chip chip-rw">REACHED RELIEFWEB</span>'
+        f'<span class="what">{html.escape(d.title)}{html.escape(where)}</span>'
+        f'<span class="meta">{hz}{curated}{glide}{reason}</span>'
+        f'{summary}'
+        f'<span class="prov"><a class="url" href="{url}">{url}</a></span>'
+        "</li>"
+    )
 
 
 def _eq_line(item: ReportItem, now: datetime) -> str:
@@ -223,8 +272,19 @@ def render(report: Report) -> str:
     else:
         corrections = ""
 
+    # Slow-onset / ongoing section (U3) — window-exempt curated crises.
+    if report.ongoing:
+        og = "\n".join(_reliefweb_line(it, now) for it in report.ongoing)
+        ongoing = f'<ul class="events">\n{og}\n</ul>'
+    else:
+        ongoing = ('<p class="nothing">No curated slow-onset crises in view. '
+                   "(ReliefWeb integration active — nothing curated, or feed not "
+                   "fetched this run.)</p>")
+
     # Heartbeat line: quiet vs loud is visible, and the timestamp proves liveness.
-    n_changes = sum(1 for it in render_items if it.change) + len(report.retractions)
+    n_changes = (sum(1 for it in render_items if it.change)
+                 + sum(1 for it in report.ongoing if it.change)
+                 + len(report.retractions))
     heartbeat = (f"{n_changes} update(s) since last run" if report.is_loud
                  else "no changes since last run")
 
@@ -267,7 +327,10 @@ def render(report: Report) -> str:
   .what {{ font-weight: 600; }}
   .meta {{ display: block; color: #7f8c8d; font-size: .85rem; margin-top: .15rem; }}
   .prov {{ display: block; color: #95a5a6; font-size: .78rem; margin-top: .1rem; }}
+  .prov a.url {{ color: #95a5a6; }}
   .xlink {{ color: #8e44ad; }}
+  .stack {{ color: #16a085; }}
+  .chip-rw {{ background: #16a085; color: #fff; }}
   .muted {{ color: #95a5a6; }}
   .nothing {{ color: #7f8c8d; font-style: italic; }}
   .ok {{ color: #27ae60; }} .down {{ color: #c0392b; font-weight: 700; }}
@@ -285,8 +348,7 @@ def render(report: Report) -> str:
 {corrections}
 
 <h2>Slow-onset / ongoing</h2>
-<p class="nothing">No always-on slow-onset section yet — curated crises (drought/epidemic/
-conflict) arrive with ReliefWeb in the next slice.</p>
+{ongoing}
 
 <h2>Feed health</h2>
 <ul class="feeds">

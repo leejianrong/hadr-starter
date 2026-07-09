@@ -79,6 +79,21 @@ line in the renderer. **DoD met:** run twice sharing state → first run flags N
 withdrawn/downgraded event yields an explicit CORRECTED line — with the `feed_ok`
 guard so an outage never manufactures a deletion. Still no model / schedule (V3).
 
+## V5 — ReliefWeb + slow-onset + provenance stacking ✅ built (2026-07-09)
+
+Adds `scripts/reliefweb.py` (RSS-first adapter, API drop-in), the slow-onset/ongoing
+section (U3, window-exempt), the reached-ReliefWeb severity floor, GLIDE-based
+provenance stacking on sudden-onset lines (U2.1), and a ReliefWeb state/change path
+(NEW-only — no retractions, since the RSS 20-item window means absence ≠ deletion).
+**DoD met:** curated disasters incl. epidemics/conflict appear in the ongoing
+section; the floor shows every curated disaster; a GLIDE match stacks two
+*independent* sources (GDACS + ReliefWeb) on one line, attributed and **never
+summed**; RSS-mode gaps (status/type/full-ISO3/date.event/pagination) flagged loud.
+ISO3 is taken from the GLIDE suffix (not name-matched); figures are not scraped from
+prose (API-only) — both recorded in `implementation-notes.md`. `--reliefweb` /
+`--all-feeds` opt-in; workflow wiring is the follow-up. Suite: 102 tests, ruff clean.
+**All slices V1–V5 built; R0–R8 satisfied.**
+
 ## V4 — GDACS multi-hazard + cross-feed join ✅ built (2026-07-09)
 
 Adds `scripts/gdacs.py` (RSS-first adapter, JSON drop-in — every GDACS parsing

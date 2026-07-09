@@ -6,6 +6,7 @@ earthquake slice every event has a time, but the model keeps the shape.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -36,11 +37,37 @@ def from_gdacs_naive(s: str | None) -> datetime | None:
 
 def from_rfc822(s: str | None) -> datetime | None:
     """GDACS RSS uses RFC-822 GMT ("Wed, 08 Jul 2026 09:50:23 GMT") — a *different*
-    format from the JSON feed (two parsers, per the blindspot)."""
+    format from the JSON feed (two parsers, per the blindspot). ReliefWeb RSS uses
+    the same RFC-822 shape ("+0000")."""
     if not s:
         return None
     dt = parsedate_to_datetime(s.strip())
     return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+# GLIDE: hazard + year + 6-digit seq + ISO3 (e.g. EQ-2026-000093-VEN). The intended
+# cross-feed key (ADR-0001) — high-precision, low-recall; absent on USGS, ~2% of
+# GDACS, but present on most ReliefWeb records (in a category/description tag).
+GLIDE_RE = re.compile(r"\b([A-Z]{2})-(\d{4})-(\d{6})-([A-Z]{3})\b")
+
+# GLIDE hazard-code → label. Codes collide (ST = severe local storm; LS = land slide
+# AND mud slide; AC = technological) — we keep the code as ground truth and only map
+# for display. Not exhaustive; unknown codes fall back to the raw code.
+GLIDE_HAZARD = {
+    "EQ": "Earthquake", "TC": "Tropical cyclone", "TS": "Tsunami", "VO": "Volcano",
+    "FL": "Flood", "FF": "Flash flood", "FR": "Fire", "WF": "Wildfire",
+    "DR": "Drought", "EP": "Epidemic", "CE": "Complex emergency", "ST": "Severe storm",
+    "LS": "Landslide", "VW": "Violent wind", "SS": "Storm surge", "CW": "Cold wave",
+    "HW": "Heat wave", "AC": "Technological", "OT": "Other",
+}
+
+
+def parse_glide(text: str | None) -> tuple[str, str, str, str] | None:
+    """First GLIDE in `text` → (hazard_code, year, seq, iso3), or None."""
+    if not text:
+        return None
+    m = GLIDE_RE.search(text)
+    return m.groups() if m else None
 
 
 @dataclass(frozen=True)
@@ -141,6 +168,34 @@ class GdacsEvent:
         return (self.peak_level or "").lower() or None
 
 
+@dataclass(frozen=True)
+class ReliefWebDisaster:
+    """One ReliefWeb disaster — a *human-declared humanitarian situation* (a
+    coordination object), curated days after onset, window-exempt. The always-on
+    slow-onset layer and the free "reached ReliefWeb" severity signal (ADR-0004
+    branch 3): editors do not make a page for a harmless event.
+
+    On RSS we get existence, title, GLIDE, countries, and pubDate — enough to fire
+    the floor and to join on GLIDE. Deliberately absent on RSS and flagged loud on
+    the page (ADR-0008): `status` (alert/current/past), structured multi-country
+    ISO3, `date.event`, and pagination (only the latest ~20 items, so a burst can
+    be silently dropped). Casualty figures are NOT parsed from the prose — that is
+    the API's structured job (numbers are consumed, never scraped — ADR-0002)."""
+
+    title: str
+    url: str                        # guid = the disaster URL; the stable RSS key
+    glide: str                      # "" if absent
+    hazard_code: str                # from the GLIDE prefix; "" if unknown
+    iso3: tuple[str, ...]           # from the GLIDE suffix (RSS loses extra countries)
+    country_names: tuple[str, ...]  # from "Affected country" tags — display only, never matched
+    pub_date: datetime | None       # curation date (RFC-822) — NOT event onset
+    summary: str                    # first prose paragraph, plain text
+
+    @property
+    def key(self) -> str:
+        return self.glide or self.url
+
+
 @dataclass
 class ReportItem:
     """A unified sudden-onset report line — one resolved cross-feed cluster (ADR-0001).
@@ -158,6 +213,7 @@ class ReportItem:
     confidence: str | None = None   # set when a cross-feed merge/link was made
     independent: bool = True        # False when two sources are the SAME reading (EQ↔NEIC)
     cross_links: list[str] = field(default_factory=list)  # low-confidence "possibly related"
+    reliefweb: "ReliefWebDisaster | None" = None  # the curated situation (ADR-0001)
     change: str | None = None       # NEW / REVISED (from change detection)
     change_reason: str = ""
 
@@ -217,6 +273,8 @@ class Report:
     clusters: list[Cluster]      # EQ clusters (state/change path + the model brief)
     feeds: list[FeedHealth]
     coverage_note: str
-    items: list[ReportItem] = field(default_factory=list)  # unified render list, ranked
+    items: list[ReportItem] = field(default_factory=list)  # sudden-onset, ranked
+    # slow-onset / curated section (U3), window-exempt:
+    ongoing: list[ReportItem] = field(default_factory=list)
     retractions: list[Retraction] = field(default_factory=list)
     is_loud: bool = False        # any NEW/REVISED/retraction since last run (ADR-0005)

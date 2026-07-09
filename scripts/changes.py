@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from .decluster import haversine_km
-from .model import ALERT_RANK, Cluster, GdacsEvent, Quake, Retraction
-from .state import GdacsStateRow, StateRow
+from .model import ALERT_RANK, Cluster, GdacsEvent, Quake, ReliefWebDisaster, Retraction
+from .state import GdacsStateRow, ReliefWebStateRow, StateRow
 
 # --- tunable constants (ADR-0006) ---
 MAG_REVISION_M = 0.3        # magnitude move at/above this is a revision (mww-family scale)
@@ -28,6 +28,7 @@ class DetectResult:
     next_rows: list[StateRow] = field(default_factory=list)
     is_loud: bool = False
     gdacs: "GdacsDetectResult | None" = None  # the parallel GDACS pass (V4), when run
+    reliefweb: "ReliefWebDetectResult | None" = None  # the ReliefWeb pass (V5), when run
 
 
 def _compare(row: StateRow, q: Quake) -> list[str]:
@@ -201,3 +202,36 @@ def detect_gdacs(prior: dict[str, GdacsStateRow], events: list[GdacsEvent],
 
     return GdacsDetectResult(changes=changes, retractions=retractions,
                              next_rows=next_rows, is_loud=loud)
+
+
+@dataclass
+class ReliefWebDetectResult:
+    changes: dict[str, tuple[str | None, str]] = field(default_factory=dict)
+    next_rows: list[ReliefWebStateRow] = field(default_factory=list)
+    is_loud: bool = False
+
+
+def detect_reliefweb(prior: dict[str, ReliefWebStateRow],
+                     disasters: list[ReliefWebDisaster],
+                     now: datetime) -> ReliefWebDetectResult:
+    """Change detection for ReliefWeb disasters, keyed on GLIDE (else URL).
+
+    A newly-curated disaster is NEW and loud — a human confirming a crisis is exactly
+    the kind of signal the model should narrate (ADR-0004 branch 3). There are **no
+    retractions**: the RSS feed shows only the latest ~20 items, so a disaster
+    dropping off the feed means it aged out of the window, NOT that it ended — the
+    "never infer ended from absent" rule at its strongest (ADR-0007 / ADR-0008)."""
+    changes: dict[str, tuple[str | None, str]] = {}
+    next_rows: list[ReliefWebStateRow] = []
+    loud = False
+    for d in disasters:
+        if d.key not in prior:
+            changes[d.key] = ("NEW", "newly curated onto ReliefWeb")
+            loud = True
+        else:
+            changes[d.key] = (None, "")
+        next_rows.append(
+            ReliefWebStateRow(key=d.key, glide=d.glide, url=d.url, title=d.title,
+                              hazard_code=d.hazard_code, iso3=d.iso3, last_seen=now)
+        )
+    return ReliefWebDetectResult(changes=changes, next_rows=next_rows, is_loud=loud)

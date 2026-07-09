@@ -200,6 +200,40 @@ Closed the three follow-ups flagged above:
    merged GDACS record's ISO3, shown attributed as "(country via GDACS)" instead of
    a bare "(offshore)". Rendering-only; numbers untouched. Suite now 84 tests.
 
+### 2026-07-09 — V5 built: ReliefWeb + slow-onset + provenance stacking
+
+The final planned slice — the curated humanitarian layer that adds epidemics and
+conflict (the hazards USGS/GDACS structurally cannot see) and completes R0.2 / R1 /
+R4. All offline-tested against a trimmed **real** ReliefWeb RSS sample captured
+2026-07-08 (`tests/fixtures/reliefweb_disasters_rss_sample.xml`).
+
+- `scripts/reliefweb.py` — RSS-first adapter (API is a drop-in once the appname
+  lands). Handles the ReliefWeb RSS traps: browser-like UA (the WAF wall), GLIDE +
+  countries parsed out of the double-escaped HTML in `<description>`, **ISO3 taken
+  from the GLIDE suffix** (a clean code) rather than string-matching country names
+  (blindspot #10), hazard type inferred from the GLIDE prefix (no `type` in RSS),
+  and the ~20-item unpaginated window surfaced on feed-health. Casualty figures are
+  deliberately **not** scraped from the prose (numbers are consumed, never modelled
+  — ADR-0002); real figure-stacking lands with the API.
+- `scripts/cluster.py::attach_reliefweb` — GLIDE-stacks a disaster onto a matching
+  sudden-onset line (its GDACS GLIDE) as **provenance stacking** (U2.1); everything
+  else becomes a window-exempt ongoing item. Unlike the EQ↔NEIC link, GDACS and
+  ReliefWeb are independent orgs, so a GLIDE match **does** corroborate
+  (`independent=True`) — but figures are shown attributed, never summed (ADR-0008).
+- `model.py` grows `ReliefWebDisaster` + the GLIDE parser/hazard map + `Report.ongoing`
+  + `ReportItem.reliefweb`; `state.py`/`changes.py` grow a ReliefWeb state table +
+  change detector (**NEW only, no retractions** — RSS's 20-item window means
+  disappearance ≠ deletion); `render.py` grows the slow-onset section (U3), the
+  REACHED-RELIEFWEB lines, and the stacked-attribution line; `sitrep.py` gains
+  `--reliefweb` / `--reliefweb-fixture` / `--all-feeds`.
+
+**DoD verified** (offline + a live three-feed run): curated disasters (incl.
+epidemics) appear in the window-exempt ongoing section; the reached-ReliefWeb floor
+shows every disaster; a GLIDE match stacks two independent sources on one line,
+attributed and never summed; RSS-mode gaps (status/type/full-ISO3/date.event/
+pagination) are flagged loud on the page. Suite now 102 tests; ruff clean.
+**Every planned slice (V1–V5) is now built; the R0–R8 matrix is satisfied.**
+
 ## Open questions
 
 - **ReliefWeb API `appname` — OWNER ACTION (external, no-SLA).** The API has
@@ -250,3 +284,25 @@ Closed the three follow-ups flagged above:
   gained an `items` list (the unified render surface); `build_report` kept its
   positional signature (GDACS args are keyword-only with safe defaults) so the V1–V3
   call sites and tests are untouched.
+
+### 2026-07-09 — V5 (ReliefWeb)
+
+- **ReliefWeb ISO3 comes from the GLIDE suffix, not the country name.** RSS gives
+  country *names* (with political variants — "Venezuela (Bolivarian Republic of)")
+  in a tag, and the GLIDE (e.g. `EQ-2026-000093-VEN`) whose last field is a clean
+  ISO3. We take ISO3 from the GLIDE and keep the names as display-only, never
+  matched (blindspot #10). Cost: a multi-country disaster on RSS shows only the
+  GLIDE's primary country until the API provides the full list — flagged on the page.
+- **No ReliefWeb retractions.** The other feeds guard retractions on `feed_ok`; for
+  ReliefWeb we suppress them entirely, because the RSS feed only carries the latest
+  ~20 items, so a disaster leaving the feed has aged out of the window, not ended.
+  Emitting a "cleared" line there would be the exact "infer ended from absent" error
+  (ADR-0007), amplified. Change detection is therefore NEW-only on RSS.
+- **ReliefWeb figures are not scraped from prose.** ADR-0008's stacked-and-attributed
+  figures ("Govt of X: 120 confirmed dead") require the API's structured fields. On
+  RSS we stack the *attributed existence + GLIDE*, not numbers regex'd out of the
+  narrative — regexing a casualty count out of prose would be modelling a figure
+  (ADR-0002). Full figure-stacking is deferred to the API upgrade, flagged on the page.
+- **`--reliefweb` is opt-in / not yet in `sitrep.yml`.** Same rationale as GDACS;
+  wiring `--all-feeds` into the 08:30 workflow is the natural next step (the browser
+  UA means no secret is needed for the RSS path).
