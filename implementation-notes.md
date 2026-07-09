@@ -303,6 +303,9 @@ pagination) are flagged loud on the page. Suite now 102 tests; ruff clean.
   RSS we stack the *attributed existence + GLIDE*, not numbers regex'd out of the
   narrative — regexing a casualty count out of prose would be modelling a figure
   (ADR-0002). Full figure-stacking is deferred to the API upgrade, flagged on the page.
-- **`--reliefweb` is opt-in / not yet in `sitrep.yml`.** Same rationale as GDACS;
-  wiring `--all-feeds` into the 08:30 workflow is the natural next step (the browser
-  UA means no secret is needed for the RSS path).
+- ~~`--reliefweb` opt-in / not in `sitrep.yml`~~ — **done (2026-07-09):** the 08:30
+  workflow step now runs `--all-feeds` (USGS + GDACS + ReliefWeb). Verified with a
+  live three-feed run producing a full page (6 sudden + 20 ongoing, all feeds ok);
+  the `brief.json` `loud` flag the workflow branches on reads correctly. All three
+  feeds' state shares `hadr-state.sqlite3` (already cached); each degrades loud
+  independently; ReliefWeb's RSS path needs no secret.
