@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import logging
 import os
+import re
 from argparse import Namespace
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 from . import severity, sitrep, telegram
 from .geo import Geo
@@ -208,6 +211,121 @@ def format_message(items: list[ReportItem], now: datetime,
     return "\n\n".join(blocks)
 
 
+# ------------------------------------------ Phase 2: emit → refine → send protocol
+#
+# The scheduled workflow runs three steps that hand off through files in a directory:
+#   1. emit  (deterministic) — fetch + gate + decide; write the facts, the
+#      deterministic message (the source of truth + fallback), and the markers.
+#   2. refine (Claude Haiku via claude-code-action) — rewrite ONLY the wording into
+#      message.refined.txt, guarded by skills/telegram-alert/SKILL.md.
+#   3. send  (deterministic) — pick the refined text IFF it is safe, else the
+#      default; POST; persist markers only after a confirmed send.
+# Splitting the send from the decision keeps the model out of the trigger and the
+# numbers (ADR-0002/0005): it can only rephrase text that is already correct.
+
+BRIEF_FILE = "brief.json"
+MESSAGE_FILE = "message.txt"
+REFINED_FILE = "message.refined.txt"
+MARKERS_FILE = "markers.json"
+
+_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _brief_for(items: list[ReportItem], now: datetime) -> dict:
+    """The honest facts the refiner may draw on — exactly what the message shows,
+    no figures it couldn't already see (mirrors sitrep.build_brief for the page)."""
+    events = []
+    for it in items:
+        _, impact = _severity_display(it)
+        events.append({
+            "title": _title(it),
+            "place": _place(it),
+            "iso3": list(_iso3(it)),
+            "impact": impact,
+            "sources": it.sources,
+            "when": it.when.astimezone(timezone.utc).isoformat() if it.when else None,
+            "link": _link(it),
+        })
+    return {"count": len(items),
+            "publish_utc": now.astimezone(timezone.utc).isoformat(),
+            "events": events}
+
+
+def _numbers(text: str) -> set[float]:
+    """Numeric values in `text`, compared by value so 'M6.5' == 'magnitude 6.5' and
+    '08' == '8' — the refiner may reformat, but not introduce a new figure."""
+    return {float(m) for m in _NUM_RE.findall(text or "")}
+
+
+def _refined_is_safe(refined: str, default: str) -> bool:
+    """The refiner may only rephrase: every number it prints must already appear in
+    the deterministic message. A novel figure is an invented number — reject and
+    fall back (ADR-0002). Empty/whitespace also fails."""
+    if not refined or not refined.strip():
+        return False
+    return _numbers(refined).issubset(_numbers(default))
+
+
+def _emit(decision: "Decision", now: datetime, out_dir: str, dashboard_url: str) -> None:
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    default_msg = format_message(decision.to_send, now, dashboard_url=dashboard_url)
+    (d / MESSAGE_FILE).write_text(default_msg)
+    (d / BRIEF_FILE).write_text(json.dumps(_brief_for(decision.to_send, now), indent=2))
+    (d / MARKERS_FILE).write_text(json.dumps(
+        [{"key": r.key, "kind": r.kind, "level": r.level, "place": r.place,
+          "notified_at": r.notified_at.astimezone(timezone.utc).isoformat()}
+         for r in decision.next_rows], indent=2))
+
+
+def _choose_send_text(out_dir: str) -> str:
+    """Refined text if present AND safe; otherwise the deterministic default."""
+    d = Path(out_dir)
+    default_msg = (d / MESSAGE_FILE).read_text()
+    refined_path = d / REFINED_FILE
+    if refined_path.exists():
+        refined = refined_path.read_text()
+        if _refined_is_safe(refined, default_msg):
+            log.info("using Haiku-refined message")
+            return refined.strip()
+        log.warning("refined message rejected (empty or introduced a figure) — "
+                    "sending the deterministic message")
+    return default_msg
+
+
+def _load_markers(out_dir: str) -> list[NotifyRow]:
+    rows = json.loads((Path(out_dir) / MARKERS_FILE).read_text())
+    return [NotifyRow(key=r["key"], kind=r["kind"], level=int(r["level"]),
+                      place=r["place"], notified_at=datetime.fromisoformat(r["notified_at"]))
+            for r in rows]
+
+
+def _send_and_persist(text: str, rows: list[NotifyRow], state_path: str,
+                      dry_run: bool) -> int:
+    """Shared send tail: POST, then persist markers only on a confirmed send."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not dry_run and (not token or not chat_id):
+        log.error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — cannot send. "
+                  "Re-run with --dry-run to preview.")
+        return 1
+    try:
+        telegram.send_message(token, chat_id, text, dry_run=dry_run)
+    except Exception as exc:  # degrade loud, never crash the loop (mirror sitrep loaders)
+        # A push that never landed must NOT be recorded, or the event is lost forever;
+        # leaving the markers unsaved means it re-fires next tick. Exit 0 — a red X
+        # every hour on a transient outage would be worse than a retry.
+        log.error("send failed, not recording markers (will retry next tick): %s", exc)
+        return 0
+    if not dry_run:
+        store = StateStore(state_path)
+        store.upsert_notifications(rows)
+        store.close()
+    log.info("pushed %d event(s)%s", len(rows),
+             " [dry-run, markers not saved]" if dry_run else "")
+    return 0
+
+
 # ---------------------------------------------------------------------------- I/O
 
 def _fetch_items(args, geo: Geo, now: datetime) -> list[ReportItem]:
@@ -240,56 +358,52 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--now", help="ISO-8601 UTC time (default: now)")
     parser.add_argument("--dry-run", action="store_true",
                         help="format + print but do not POST (no token needed)")
+    parser.add_argument("--emit-dir",
+                        help="decide + write brief/message/markers to DIR, do not send "
+                             "(step 1 of the model-refinement flow)")
+    parser.add_argument("--send-dir",
+                        help="send the (refined-or-default) message written in DIR "
+                             "(step 3 of the model-refinement flow)")
+    parser.add_argument("--github-output",
+                        help="append `has_alert=...` to this file (GitHub Actions output)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     now = (datetime.fromisoformat(args.now).replace(tzinfo=timezone.utc)
            if args.now else datetime.now(timezone.utc))
+    dashboard_url = os.environ.get("NOTIFY_DASHBOARD_URL", LIVE_REPORT_URL)
 
+    # --- send mode: transport only, decision already made by an earlier emit ---
+    if args.send_dir:
+        text = _choose_send_text(args.send_dir)
+        return _send_and_persist(text, _load_markers(args.send_dir), args.state,
+                                 args.dry_run)
+
+    # --- emit / default: run the pipeline + the deterministic gate ---
     geo = Geo()
     store = StateStore(args.state)
     prior = store.load_notifications()
-
     items = _fetch_items(args, geo, now)
     decision = decide(items, prior, now)
+    store.close()
 
+    if args.emit_dir:
+        _emit(decision, now, args.emit_dir, dashboard_url)
+        has_alert = bool(decision.to_send)
+        log.info("emit: %d event(s) to send (%d scanned)", len(decision.to_send),
+                 len(items))
+        if args.github_output:
+            with open(args.github_output, "a") as f:
+                f.write(f"has_alert={'true' if has_alert else 'false'}\n")
+        return 0
+
+    # --- default: all-in-one deterministic send (no model), for local use / Phase 1 ---
     if not decision.to_send:
-        store.close()
         log.info("no new/escalated orange+ events — nothing to push (%d scanned)",
                  len(items))
         return 0
-
-    text = format_message(
-        decision.to_send, now,
-        dashboard_url=os.environ.get("NOTIFY_DASHBOARD_URL", LIVE_REPORT_URL))
-
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if not args.dry_run and (not token or not chat_id):
-        # Fail loud, don't silently swallow: the loop is misconfigured.
-        store.close()
-        log.error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — cannot send. "
-                  "Re-run with --dry-run to preview.")
-        return 1
-
-    try:
-        telegram.send_message(token, chat_id, text, dry_run=args.dry_run)
-    except Exception as exc:  # degrade loud, never crash the loop (mirror sitrep loaders)
-        # Degrade loud, don't crash the scheduled loop: log, leave the markers
-        # unsaved so the event re-fires next tick, and exit 0. A push that never
-        # landed must NOT be recorded, or the event would be lost forever.
-        store.close()
-        log.error("send failed, not recording markers (will retry next tick): %s", exc)
-        return 0
-
-    # Only persist markers once the push is out (or dry-run confirmed) — idempotency.
-    if not args.dry_run:
-        store.upsert_notifications(decision.next_rows)
-    store.close()
-
-    log.info("pushed %d event(s)%s", len(decision.to_send),
-             " [dry-run, markers not saved]" if args.dry_run else "")
-    return 0
+    text = format_message(decision.to_send, now, dashboard_url=dashboard_url)
+    return _send_and_persist(text, decision.next_rows, args.state, args.dry_run)
 
 
 if __name__ == "__main__":

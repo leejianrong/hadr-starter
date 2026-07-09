@@ -407,3 +407,39 @@ message; it will never gain a vote on severity, merges, or whether to fire.
   `report.recent`), so the alert loop reads exactly the right set — verified by the
   `--dry-run` fixture test exercising the post-V6 `build_report`. Gate green
   (`ruff` + 123 pytest).
+
+### 2026-07-09 — Telegram alerts, Phase 2 (Claude Haiku wording refinement)
+
+Layered the model onto Phase 1 without giving it any say over the trigger or the
+numbers (Shape A / ADR-0002/0005). **Substrate: `claude-code-action` with Claude
+Haiku** (`claude-haiku-4-5-20251001`) reusing the existing `CLAUDE_CODE_OAUTH_TOKEN`
+— same provider and pattern as the daily narrator, **no new secret** (the earlier
+GPT-4o idea was dropped once we confirmed the daily narrator already runs Claude).
+
+- **emit → refine → send**, three deterministic-bookended workflow steps mirroring
+  the daily narrator's pipeline→model→inject shape:
+  1. `notify --emit-dir` runs the pipeline + the deterministic gate and writes
+     `brief.json` (honest facts), `message.txt` (the deterministic message — the
+     **source of truth and fallback**), and `markers.json`; sets `has_alert`.
+     Sends nothing, persists nothing.
+  2. `claude-code-action` (Haiku), guarded by `skills/telegram-alert/SKILL.md`,
+     rewrites **only the wording** into `message.refined.txt`. `continue-on-error`:
+     a missing token (forks) or an API blip just leaves the refined file absent.
+  3. `notify --send-dir` sends the refined text **iff it is safe**, else the
+     deterministic default; persists markers only after a confirmed send.
+- **The refiner can rephrase but not invent (`_refined_is_safe`).** Every numeric
+  value in the refined text must already appear in the deterministic message
+  (compared by value, so `M6.5`↔`magnitude 6.5` and `08`↔`8` are fine). A novel
+  figure — or empty output — is rejected and the default is sent. This makes
+  ADR-0002's "consume numbers, never model them" hold *deterministically* even
+  though a model touched the string.
+- **Decision/send split** is what keeps the model honest: it never runs the gate,
+  never sees prior state, and its output passes through a numeric check before a
+  byte reaches Telegram. The whole feature still degrades to the Phase-1
+  deterministic message if the model is absent or misbehaves.
+- The single-process `notify` (no `--emit-dir`/`--send-dir`) path is unchanged — it
+  stays the deterministic Phase-1 behaviour for local runs and `--dry-run`.
+- Verified end-to-end offline: emit over fixtures → hand-written "refined" message
+  (safe and unsafe variants) → send `--dry-run` picks refined-when-safe, falls back
+  on an invented figure. Gate green (`ruff` + 127 pytest). Live refinement pending
+  the same `CLAUDE_CODE_OAUTH_TOKEN` the daily job uses (already set in this repo).

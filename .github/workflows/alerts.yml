@@ -1,11 +1,15 @@
 # HADR alerts — the ~hourly one-way Telegram push on a new/escalated fast-feed event.
 #
 # A second, lighter cadence than the daily "Morning sitrep" (sitrep.yml). It runs
-# only the FAST feeds (USGS + GDACS) — ReliefWeb is days-latent and stays daily —
-# and pushes a Telegram message when the DETERMINISTIC gate in scripts/notify.py
-# says an orange+/new event crossed the bar. No model is in this loop (Phase 1);
-# no git push (the "last notified" state rides the Actions cache, like the daily
-# job's), so this workflow needs no write permission.
+# only the FAST feeds (USGS + GDACS) — ReliefWeb is days-latent and stays daily.
+# Three deterministic-bookended steps (mirrors the daily narrator shape):
+#   1. emit  — the DETERMINISTIC loud-gate (scripts/notify.py) decides what to send
+#      and writes the facts + the honest message; the model never decides to fire.
+#   2. refine — Claude Haiku rewrites ONLY the wording (guarded by a SKILL); it owns
+#      no numbers and no decision. Best-effort: if it errors or the token is absent,
+#      the send falls back to the deterministic message.
+#   3. send  — POST to Telegram; persist the "last notified" markers only after a
+#      confirmed send. No git push (state rides the Actions cache).
 name: HADR alerts
 
 on:
@@ -15,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write          # for claude-code-action
 
 # Never let two ticks run the loop at once (a slow fetch + the next cron firing
 # could double-send). Latest wins; in-flight run is cancelled.
@@ -42,20 +47,42 @@ jobs:
           key: hadr-notify-state-${{ github.run_id }}
           restore-keys: hadr-notify-state-
 
-      # Deterministic: fetch USGS + GDACS, apply the push gate, send via Telegram.
-      # If the secrets aren't configured (e.g. a fork), fall back to --dry-run so the
-      # scheduled job stays green instead of failing on a missing token.
-      - name: Send alerts
+      # 1. Deterministic: fetch USGS + GDACS, apply the push gate, and write the
+      #    brief + the honest message + the markers to alert_out/. Sets has_alert.
+      #    Sends nothing and persists nothing.
+      - id: emit
+        env:
+          NOTIFY_DASHBOARD_URL: ${{ vars.NOTIFY_DASHBOARD_URL }}
+        run: |
+          uv run --frozen python -m scripts.notify \
+            --emit-dir alert_out --github-output "$GITHUB_OUTPUT"
+
+      # 2. Refine the wording with Claude Haiku — ONLY when there's something to send.
+      #    best-effort: continue-on-error so a missing token (forks) or an API blip
+      #    just leaves message.refined.txt absent and step 3 sends the default.
+      - if: steps.emit.outputs.has_alert == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Follow the instructions in skills/telegram-alert/SKILL.md exactly.
+            Read alert_out/brief.json and alert_out/message.txt, then write the
+            refined alert to alert_out/message.refined.txt. Do not edit any other file.
+          claude_args: '--model claude-haiku-4-5-20251001 --allowedTools Read,Write'
+
+      # 3. Deterministic send: refined-if-safe else the default; then persist markers.
+      #    Falls back to --dry-run when the Telegram secrets are absent (stays green).
+      - if: steps.emit.outputs.has_alert == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          NOTIFY_DASHBOARD_URL: ${{ vars.NOTIFY_DASHBOARD_URL }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "::warning::TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — running --dry-run (no send)."
-            uv run --frozen python -m scripts.notify --dry-run
+            echo "::warning::TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — --dry-run (no send)."
+            uv run --frozen python -m scripts.notify --send-dir alert_out --dry-run
           else
-            uv run --frozen python -m scripts.notify
+            uv run --frozen python -m scripts.notify --send-dir alert_out
           fi
 
-      - run: echo "### HADR alerts tick — $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
+      - run: echo "### HADR alerts tick — has_alert=${{ steps.emit.outputs.has_alert }}" >> "$GITHUB_STEP_SUMMARY"

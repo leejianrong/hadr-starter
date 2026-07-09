@@ -38,8 +38,14 @@ Stack: Python 3.12+ managed with `uv` / pytest — see `CLAUDE.md`. Run
 Alongside the daily 08:30 page, a second scheduled workflow (`.github/workflows/alerts.yml`)
 runs ~hourly on the **fast feeds only** (USGS + GDACS) and pushes a one-way Telegram
 message when a *new or escalated* event reaches **orange/red** impact (a fresh major
-quake PAGER hasn't scored yet also qualifies). ReliefWeb stays on the daily page. The
-decision to fire is 100% deterministic (`scripts/notify.py`) — no model in the loop.
+quake PAGER hasn't scored yet also qualifies). ReliefWeb stays on the daily page.
+
+The **decision to fire is 100% deterministic** (`scripts/notify.py`). Claude Haiku
+(via `claude-code-action`, reusing `CLAUDE_CODE_OAUTH_TOKEN`) then *refines only the
+wording* of the already-composed message — it never decides whether to alert and
+never touches a number: a deterministic check (`_refined_is_safe`) rejects any
+refined text that introduces a figure, falling back to the honest default. If the
+model is unavailable, the deterministic message is sent as-is.
 
 Preview it locally without a bot (no send):
 

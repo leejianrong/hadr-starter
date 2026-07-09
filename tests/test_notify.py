@@ -145,3 +145,60 @@ def test_main_dry_run_over_fixtures(tmp_path, caplog):
         ])
     assert rc == 0
     assert any("would POST" in r.message for r in caplog.records)
+
+
+# ---------------------------------------- Phase 2: refine safety + emit/send flow
+
+def test_refined_safe_allows_reformatting():
+    default = "🔴 <b>Earthquake — M6.5</b>\n📍 Town (CRI)\nImpact: Red"
+    # Rephrase M6.5 -> "magnitude 6.5": same numeric value, allowed.
+    assert notify._refined_is_safe("A preliminary magnitude 6.5 quake near Town.", default)
+
+
+def test_refined_unsafe_on_new_number_or_empty():
+    default = "🔴 <b>Earthquake — M6.5</b>\nImpact: Red"
+    assert not notify._refined_is_safe("A magnitude 7.1 quake.", default)  # invented figure
+    assert not notify._refined_is_safe("   ", default)                     # empty
+    assert not notify._refined_is_safe("", default)
+
+
+def test_choose_send_text_prefers_safe_refined_else_default(tmp_path):
+    d = tmp_path / "out"
+    d.mkdir()
+    (d / notify.MESSAGE_FILE).write_text("🟠 <b>Flood — M6.5</b>\nImpact: Orange")
+
+    # No refined file -> default.
+    assert "Orange" in notify._choose_send_text(str(d))
+
+    # Safe refined -> used.
+    (d / notify.REFINED_FILE).write_text("🟠 A preliminary magnitude 6.5 flood. Orange.")
+    assert notify._choose_send_text(str(d)).startswith("🟠 A preliminary")
+
+    # Unsafe refined (new number) -> falls back to default.
+    (d / notify.REFINED_FILE).write_text("🟠 A magnitude 9.9 flood.")
+    assert "Impact: Orange" in notify._choose_send_text(str(d))
+
+
+def test_emit_then_send_roundtrip(tmp_path, caplog):
+    import logging
+    out = tmp_path / "alert_out"
+    gh = tmp_path / "gh_output"
+    rc = notify.main([
+        "--fixture", "tests/fixtures/usgs_all_hour_sample.json",
+        "--gdacs-fixture", "tests/fixtures/gdacs_rss_sample.xml",
+        "--state", str(tmp_path / "n.sqlite3"),
+        "--emit-dir", str(out), "--github-output", str(gh),
+        "--now", "2026-07-08T12:00:00",
+    ])
+    assert rc == 0
+    assert "has_alert=true" in gh.read_text()
+    assert (out / notify.MESSAGE_FILE).exists()
+    assert (out / notify.BRIEF_FILE).exists()
+    assert (out / notify.MARKERS_FILE).exists()
+
+    # send reads what emit wrote (no refined file -> deterministic default).
+    with caplog.at_level(logging.INFO, logger="notify.telegram"):
+        rc = notify.main(["--send-dir", str(out), "--state", str(tmp_path / "n.sqlite3"),
+                          "--dry-run"])
+    assert rc == 0
+    assert any("would POST" in r.message for r in caplog.records)
