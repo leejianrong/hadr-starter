@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HADR Monitor: a daily disaster report</title>
+<meta name="description" content="A daily report of the world's disasters. Three global feeds read every morning at 08:30 SGT and shown on one page, with the highest human impact first.">
+<style>
+  :root {
+    --ink:    #0b0f14;
+    --ink-2:  #0e131a;
+    --panel:  #121820;
+    --line:   rgba(222,232,242,.10);
+    --line-2: rgba(222,232,242,.18);
+    --paper:  #e8eef4;
+    --muted:  #8a97a5;
+    --faint:  #5d6875;
+    --green:  #35c46b;
+    --orange: #f0872e;
+    --red:    #e04b3a;
+    --signal: #79b8d1;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --maxw: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      linear-gradient(var(--ink-2) 1px, transparent 1px),
+      linear-gradient(90deg, var(--ink-2) 1px, transparent 1px);
+    background-size: 46px 46px;
+    background-position: center;
+  }
+
+  .skip {
+    position: absolute; left: -999px; top: 0; z-index: 100;
+    background: var(--signal); color: var(--ink); padding: .5rem .8rem;
+    font-family: var(--font-mono); font-weight: 700; border-radius: 0 0 4px 0;
+  }
+  .skip:focus { left: 0; }
+
+  a { color: var(--signal); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 2px; }
+
+  .mono { font-family: var(--font-mono); }
+
+  /* ---------- ops top bar ---------- */
+  .ops-bar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 1.2rem;
+    padding: .7rem clamp(1rem, 4vw, 2.4rem);
+    background: rgba(11,15,20,.82);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: .78rem;
+  }
+  .ops-bar .brand { font-weight: 700; letter-spacing: .04em; color: var(--paper); }
+  .ops-bar .brand b { color: var(--signal); }
+  .ops-bar .status {
+    display: inline-flex; align-items: center; gap: .5rem;
+    color: var(--muted); letter-spacing: .04em;
+  }
+  .ops-bar .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 0 rgba(53,196,107,.55); animation: pulse 3.4s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(53,196,107,.5); }
+    70% { box-shadow: 0 0 0 7px rgba(53,196,107,0); }
+    100% { box-shadow: 0 0 0 0 rgba(53,196,107,0); }
+  }
+  .ops-bar nav { margin-left: auto; display: flex; gap: 1.3rem; }
+  .ops-bar nav a { color: var(--muted); letter-spacing: .04em; }
+  .ops-bar nav a:hover { color: var(--paper); text-decoration: none; }
+  @media (max-width: 720px) { .ops-bar nav { display: none; } }
+
+  /* ---------- layout ---------- */
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(1.2rem, 4vw, 2.4rem); }
+  section { padding: clamp(3rem, 7vw, 5.5rem) 0; border-top: 1px solid var(--line); }
+  .hero { border-top: 0; }
+
+  /* ---------- hero ---------- */
+  .hero { padding-top: clamp(3.5rem, 9vw, 7rem); }
+  .hero h1 {
+    font-family: var(--font-mono); font-weight: 700;
+    font-size: clamp(2.1rem, 6vw, 4rem); line-height: 1.05;
+    letter-spacing: -.02em; margin: 0 0 1.4rem; max-width: 18ch;
+    text-wrap: balance;
+    animation: rise .7s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .hero h1 .accent { color: var(--signal); }
+  .hero .lead {
+    font-size: clamp(1.05rem, 2.3vw, 1.3rem); color: var(--muted); max-width: 58ch;
+    margin: 0 0 2.2rem; animation: rise .7s .08s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .hero .lead b { color: var(--paper); font-weight: 600; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .hero h1, .hero .lead { animation: none; } }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: .9rem; animation: rise .7s .16s cubic-bezier(.2,.7,.2,1) both; }
+  @media (prefers-reduced-motion: reduce) { .cta-row { animation: none; } }
+  .btn {
+    display: inline-flex; align-items: center; gap: .6rem;
+    font-family: var(--font-mono); font-size: .9rem; font-weight: 600; letter-spacing: .02em;
+    padding: .8rem 1.3rem; border-radius: 6px; border: 1px solid transparent; cursor: pointer;
+    transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn-primary { background: var(--signal); color: var(--ink); }
+  .btn-primary:hover { background: #93c6da; }
+  .btn-ghost { border-color: var(--line-2); color: var(--paper); }
+  .btn-ghost:hover { border-color: var(--signal); }
+  .btn .arr { transition: transform .15s ease; }
+  .btn:hover .arr { transform: translateX(3px); }
+
+  /* ---------- generic section head ---------- */
+  h2 {
+    font-family: var(--font-mono); font-weight: 700; font-size: clamp(1.4rem, 3vw, 2rem);
+    letter-spacing: -.01em; margin: 0 0 .7rem; line-height: 1.15; text-wrap: balance;
+  }
+  .section-lead { color: var(--muted); max-width: 62ch; margin: 0 0 2.4rem; font-size: 1.05rem; }
+
+  /* ---------- two-section explainer ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  @media (max-width: 720px) { .split { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.5rem 1.6rem; position: relative; overflow: hidden;
+  }
+  .card .tag {
+    font-family: var(--font-mono); font-size: .66rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); display: block; margin-bottom: .7rem;
+  }
+  .card h3 { font-size: 1.16rem; margin: 0 0 .55rem; font-weight: 650; }
+  .card p { margin: 0; color: var(--muted); font-size: .96rem; }
+  .card.window::before, .card.exempt::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  }
+  .card.window::before { background: var(--orange); }
+  .card.exempt::before { background: var(--signal); }
+
+  /* ---------- rules ---------- */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem 2.4rem; }
+  @media (max-width: 720px) { .rules { grid-template-columns: 1fr; } }
+  .rule { display: flex; gap: 1rem; align-items: flex-start; }
+  .rule .mark {
+    flex: none; width: 12px; height: 12px; border-radius: 50%; margin-top: .45rem;
+    background: var(--m); box-shadow: 0 0 12px 0 var(--m);
+  }
+  .rule h3 { margin: 0 0 .3rem; font-size: 1.05rem; font-weight: 650; }
+  .rule p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+  /* ---------- feeds ---------- */
+  .feeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+  @media (max-width: 820px) { .feeds { grid-template-columns: 1fr; } }
+  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.5rem 1.5rem 1.3rem; }
+  .feed .name { font-family: var(--font-mono); font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; }
+  .feed .role { display: block; margin: .45rem 0 .9rem; font-size: 1.02rem; font-weight: 600; }
+  .feed p { margin: 0 0 1.1rem; color: var(--muted); font-size: .93rem; }
+  .feed .meta {
+    font-family: var(--font-mono); font-size: .7rem; letter-spacing: .05em; color: var(--faint);
+    border-top: 1px solid var(--line); padding-top: .8rem; text-transform: uppercase;
+  }
+  .feeds-note {
+    margin-top: 1.4rem; font-size: .96rem; color: var(--muted);
+    border-left: 2px solid var(--signal); padding-left: 1rem;
+  }
+  .feeds-note b { color: var(--paper); font-weight: 600; }
+
+  /* ---------- method flow ---------- */
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 2rem; }
+  .flow .step {
+    font-family: var(--font-mono); font-size: .78rem; letter-spacing: .04em;
+    padding: .45rem .7rem; border: 1px solid var(--line-2); border-radius: 5px; color: var(--paper);
+  }
+  .flow .step.loud { border-color: var(--orange); color: var(--orange); }
+  .flow .sep { color: var(--faint); font-family: var(--font-mono); }
+  .method-body { color: var(--muted); max-width: 66ch; font-size: 1.03rem; }
+  .method-body b { color: var(--paper); font-weight: 600; }
+
+  /* ---------- limits ---------- */
+  .limits { list-style: none; padding: 0; margin: 0; max-width: 72ch; }
+  .limits li { padding: .7rem 0 .7rem 1.6rem; border-bottom: 1px solid var(--line); position: relative; color: var(--muted); }
+  .limits li::before { content: "\2013"; position: absolute; left: 0; color: var(--faint); font-family: var(--font-mono); }
+  .limits li b { color: var(--paper); font-weight: 600; }
+
+  /* ---------- final cta ---------- */
+  .final { text-align: center; }
+  .final h2 { font-size: clamp(1.6rem, 4vw, 2.4rem); }
+  .final .cta-row { justify-content: center; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 2.4rem 0 3rem;
+    color: var(--faint); font-size: .84rem; font-family: var(--font-mono); line-height: 1.9;
+  }
+  footer .wrap { padding-left: clamp(1.2rem, 4vw, 2.4rem); }
+</style>
+</head>
+<body>
+<a class="skip" href="#report">Skip to the report</a>
+
+<header class="ops-bar">
+  <span class="brand">HADR<b>·</b>MON</span>
+  <span class="status"><span class="dot"></span> UPDATED DAILY, 08:30 SGT</span>
+  <nav>
+    <a href="#what">What you get</a>
+    <a href="#trust">Trust</a>
+    <a href="#feeds">Feeds</a>
+    <a href="#report">Report</a>
+  </nav>
+</header>
+
+<main>
+<div class="wrap">
+
+  <section class="hero">
+    <h1>The world's disasters, ranked by <span class="accent">human impact</span>.</h1>
+    <p class="lead">Every morning at 08:30 Singapore time, HADR Monitor reads three global feeds
+      and shows the disasters that need attention, with the <b>highest human impact first</b>.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">&rarr;</span></a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+  </section>
+
+  <section id="what">
+    <h2>One page, two sections.</h2>
+    <p class="section-lead">Fast events and slow crises run on different clocks, so the report
+      keeps them apart.</p>
+    <div class="split">
+      <div class="card window">
+        <span class="tag">Sudden onset, last 24 hours</span>
+        <h3>Sudden events</h3>
+        <p>Earthquakes, cyclones, floods, and wildfires from the 24 hours before 08:30.
+          Aftershocks are grouped under their main quake. An event reported by two feeds shows
+          once, not twice.</p>
+      </div>
+      <div class="card exempt">
+        <span class="tag">Slow onset, always shown</span>
+        <h3>Ongoing crises</h3>
+        <p>Droughts, epidemics, and conflict have no single start time. They stay on the page
+          for as long as they are active, with no 24-hour cutoff.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="trust">
+    <h2>Why you can trust the numbers.</h2>
+    <p class="section-lead">Four rules, enforced in code.</p>
+    <div class="rules">
+      <div class="rule">
+        <span class="mark" style="--m:var(--red)"></span>
+        <div>
+          <h3>Severity means impact, not size.</h3>
+          <p>We use the alert level that USGS and GDACS already calculate from population and
+            vulnerability. We do not estimate casualties ourselves.</p>
+        </div>
+      </div>
+      <div class="rule">
+        <span class="mark" style="--m:var(--orange)"></span>
+        <div>
+          <h3>Sources stay separate.</h3>
+          <p>A modelled estimate and a government count are two views of one event. We show both,
+            each with its source. We never add them together.</p>
+        </div>
+      </div>
+      <div class="rule">
+        <span class="mark" style="--m:var(--green)"></span>
+        <div>
+          <h3>Quiet mornings still publish.</h3>
+          <p>The page updates every day, even when nothing is wrong. Silence means calm, not a
+            broken system.</p>
+        </div>
+      </div>
+      <div class="rule">
+        <span class="mark" style="--m:var(--signal)"></span>
+        <div>
+          <h3>Code decides, not a model.</h3>
+          <p>What shows, how it ranks, and what merges are all fixed in code you can read and
+            test. A language model only writes the summary text, never a number.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="feeds">
+    <h2>Three feeds, three kinds of record.</h2>
+    <p class="section-lead">Each feed is a different kind of record, arriving at a different
+      speed. The report combines them into one line per event.</p>
+    <div class="feeds">
+      <div class="feed">
+        <span class="name">USGS</span>
+        <span class="role">Earthquakes, in seconds.</span>
+        <p>The physical measurement of where an earthquake struck and how strong it was.</p>
+        <div class="meta">seconds &middot; earthquakes only</div>
+      </div>
+      <div class="feed">
+        <span class="name">GDACS</span>
+        <span class="role">Impact alerts, in minutes.</span>
+        <p>Earthquakes, cyclones, floods, wildfires, and volcanoes, each rated by likely human
+          impact.</p>
+        <div class="meta">minutes &middot; EQ, TC, FL, WF, VO</div>
+      </div>
+      <div class="feed">
+        <span class="name">ReliefWeb</span>
+        <span class="role">Curated crises, in days.</span>
+        <p>Everything above, plus epidemics and conflict. If humanitarian editors made a page for
+          it, it already matters.</p>
+        <div class="meta">days &middot; adds epidemics, conflict</div>
+      </div>
+    </div>
+    <p class="feeds-note">The same earthquake can arrive from all three feeds. A GDACS quake is
+      built from the USGS reading, so the two agreeing is not extra proof. The report knows this
+      and shows them as <b>one line</b>.</p>
+  </section>
+
+  <section id="how">
+    <h2>How it works.</h2>
+    <div class="flow" role="list" aria-label="pipeline steps">
+      <span class="step" role="listitem">fetch</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">clean</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">group</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">match across feeds</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">rank</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">build page</span><span class="sep">&rsaquo;</span>
+      <span class="step loud" role="listitem">summarize, only if changed</span>
+    </div>
+    <p class="method-body">Each morning a scheduled job fetches the three feeds, cleans them into
+      one format, groups aftershocks, matches the same event across feeds, ranks by impact, and
+      builds the page. All of this is plain, tested Python. <b>Only if something important changed
+      since yesterday</b> does a language model write the short summary at the top. It never
+      chooses what to show, and never changes a number.</p>
+  </section>
+
+  <section id="limits">
+    <h2>What it does not do.</h2>
+    <ul class="limits">
+      <li><b>It does not estimate casualties.</b> It reports the figures that experts publish.</li>
+      <li><b>Onshore is approximate.</b> It uses country outlines, so a quake just off the coast can look offshore.</li>
+      <li><b>ReliefWeb uses the public RSS feed for now,</b> so status and older records are limited. Each report says so.</li>
+      <li><b>Coverage is limited</b> to USGS earthquakes, GDACS hazards, and ReliefWeb crises. The report states what it does not cover.</li>
+    </ul>
+  </section>
+
+  <section id="report" class="final">
+    <h2>See this morning's report.</h2>
+    <p class="section-lead" style="margin-inline:auto">One page, ranked by impact, clear about
+      what it cannot see.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">&rarr;</span></a>
+      <a class="btn btn-ghost" href="https://github.com/leejianrong/hadr-starter">Source on GitHub <span class="arr">&rarr;</span></a>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    HADR Monitor, a daily humanitarian disaster report.<br>
+    Published every day at 08:30 Singapore time (UTC+8). Times shown in UTC and SGT.<br>
+    Severity comes from USGS PAGER and GDACS. Figures are never added across sources.
+  </div>
+</footer>
+
+</body>
+</html>
