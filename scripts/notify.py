@@ -39,6 +39,10 @@ log = logging.getLogger("notify")
 # daily sitrep's hadr-state.sqlite3 so the two cadences never race on one file.
 DEFAULT_NOTIFY_STATE = "hadr-notify-state.sqlite3"
 
+# The live report the alert links back to (GitHub Pages). Overridable via env for
+# forks; defaults to the deployed page so a message always carries a real link.
+LIVE_REPORT_URL = "https://leejianrong.github.io/hadr-starter/"
+
 # --- the push gate (chattiness). Named + tunable, model-free (CLAUDE.md #1). ---
 # Only orange/red impact reaches a phone; sub-orange stays on the daily page. The
 # base trigger is still the pipeline's own new/escalation detection — this is the
@@ -255,8 +259,9 @@ def main(argv: list[str] | None = None) -> int:
                  len(items))
         return 0
 
-    text = format_message(decision.to_send, now,
-                          dashboard_url=os.environ.get("NOTIFY_DASHBOARD_URL", ""))
+    text = format_message(
+        decision.to_send, now,
+        dashboard_url=os.environ.get("NOTIFY_DASHBOARD_URL", LIVE_REPORT_URL))
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -269,11 +274,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         telegram.send_message(token, chat_id, text, dry_run=args.dry_run)
-    except telegram.TelegramError as exc:
-        # A push that never landed must NOT be recorded, or the event is lost forever.
+    except Exception as exc:  # degrade loud, never crash the loop (mirror sitrep loaders)
+        # Degrade loud, don't crash the scheduled loop: log, leave the markers
+        # unsaved so the event re-fires next tick, and exit 0. A push that never
+        # landed must NOT be recorded, or the event would be lost forever.
         store.close()
-        log.error("send failed, not recording markers: %s", exc)
-        return 1
+        log.error("send failed, not recording markers (will retry next tick): %s", exc)
+        return 0
 
     # Only persist markers once the push is out (or dry-run confirmed) — idempotency.
     if not args.dry_run:

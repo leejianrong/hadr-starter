@@ -355,7 +355,7 @@ YAML `permissions:` block is now load-bearing (repo default is read-only).
 ### 2026-07-09 — Telegram alerts, Phase 1 (deterministic)
 
 The "(c)" agentic/Telegram feature, built as a **second scheduled workflow**
-(`notify.yml`, ~hourly) on the fast feeds only. Phase 1 is fully deterministic —
+(`alerts.yml`, ~hourly) on the fast feeds only. Phase 1 is fully deterministic —
 **no model is in the alert loop** — matching Shape A (ADR-0002/0005). A later
 Phase 2 may let a cheap model (Claude Haiku via `claude-code-action`, the same
 provider as the daily narrator) *refine the wording* of an already-composed
@@ -396,3 +396,14 @@ message; it will never gain a vote on severity, merges, or whether to fire.
   produced a correct, escaped message) and unit-tested for the gate, idempotency
   (first-sight / same-level / escalation / de-escalation / below-threshold), and
   formatting. Live send pending the `@BotFather` token + channel id — see README.
+- **Degrade loud, never crash-loop.** A feed fetch failure degrades to empty items
+  (no false alert); a Telegram send failure is logged, leaves the idempotency
+  markers *unsaved* (so the event re-fires next tick), and exits 0 — a red X every
+  hour on a transient outage would be worse than a retry (mirrors sitrep's loaders).
+- **Integrated onto V6 (2026-07-09).** Branched pre-V6; merged `origin/main` (V6
+  livelier dashboard + CI push fix). No manual conflicts. Confirmed the semantic
+  change that matters here: V6 widened the USGS window to 7 days but `report.items`
+  is still the **24h sudden-onset** subset (7-day history is the separate
+  `report.recent`), so the alert loop reads exactly the right set — verified by the
+  `--dry-run` fixture test exercising the post-V6 `build_report`. Gate green
+  (`ruff` + 123 pytest).
