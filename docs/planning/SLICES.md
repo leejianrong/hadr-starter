@@ -79,6 +79,16 @@ line in the renderer. **DoD met:** run twice sharing state → first run flags N
 withdrawn/downgraded event yields an explicit CORRECTED line — with the `feed_ok`
 guard so an outage never manufactures a deletion. Still no model / schedule (V3).
 
+## V6 — livelier dashboard (post-plan) ✅ built (2026-07-09)
+
+Presentation + context, no new feed. Adds a **Past-7-days** section (USGS `all_week`
++ GDACS, split from the 24h brief by event time), a **scanned-vs-shown** summary line,
+a deterministic inline-SVG **activity chart** (events/day by severity), and a **Duty
+Desk restyle** of `render.py` to match the landing page. Also a **second daily run at
+15:00 SGT** (07:00 UTC) and a correctness fix: change-detection now runs over the full
+7-day set so an event ageing out of the 24h brief is no longer a spurious CORRECTED.
+`report.clusters` stays the 24h set (brief/compat unchanged). Suite: 108 tests.
+
 ## V5 — ReliefWeb + slow-onset + provenance stacking ✅ built (2026-07-09)
 
 Adds `scripts/reliefweb.py` (RSS-first adapter, API drop-in), the slow-onset/ongoing

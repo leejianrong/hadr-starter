@@ -5,12 +5,16 @@
 #      regenerates dashboard.html;
 #   2. the model runs ONLY if it did, to write the narrative prose.
 # The model never decides whether to wake up.
-name: Morning sitrep
+name: Daily sitrep
 
 on:
   workflow_dispatch: {}
   schedule:
     - cron: "30 0 * * *"   # 08:30 Asia/Singapore (UTC+8) = 00:30 UTC. Cron is UTC.
+    - cron: "0 7 * * *"    # 15:00 Asia/Singapore = 07:00 UTC. Second daily run.
+    # The window label is computed from the run time, so the 15:00 run reads
+    # "last 24h ending 15:00 SGT" automatically. The model still wakes only on a
+    # loud change, so a quiet afternoon costs nothing.
 
 permissions:
   contents: write          # commit the regenerated dashboard.html
@@ -66,6 +70,13 @@ jobs:
           fi
 
       # 4. Publish: commit the regenerated dashboard (the product artefact).
+      #    Push with an explicit token URL rather than a bare `git push`: the
+      #    claude-code-action step above removes the auth header actions/checkout
+      #    persisted and rewrites `origin` with its own (non-GitHub) token, so a bare
+      #    push fails auth. This re-establishes the write-capable GITHUB_TOKEN and is
+      #    immune to whatever remote the action left behind. The `permissions:
+      #    contents: write` block is what makes this token writable (the repo default
+      #    is read-only) — do not remove it.
       - run: |
           if git diff --quiet -- dashboard.html; then
             echo "dashboard.html unchanged — nothing to publish"
@@ -73,8 +84,8 @@ jobs:
             git config user.name "hadr-bot"
             git config user.email "hadr-bot@users.noreply.github.com"
             git add dashboard.html
-            git commit -m "chore: morning sitrep $(date -u +%FT%TZ) (loud=${{ steps.run.outputs.loud }})"
-            git push
+            git commit -m "chore: sitrep $(date -u +%FT%TZ) (loud=${{ steps.run.outputs.loud }})"
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:main
           fi
 
-      - run: echo "### Morning sitrep — loud=${{ steps.run.outputs.loud }}" >> "$GITHUB_STEP_SUMMARY"
+      - run: echo "### Sitrep — loud=${{ steps.run.outputs.loud }}" >> "$GITHUB_STEP_SUMMARY"

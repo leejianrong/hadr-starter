@@ -10,9 +10,12 @@ from .geo import Geo
 from .model import Quake, from_ms
 
 FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
+# all_week covers 7 days (a superset of all_day) — used for the Past-7-days context
+# section; the 24h sudden-onset brief is sliced from it by event time.
+FEED_URL_WEEK = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
 
 
-def fetch(url: str = FEED_URL, timeout: float = 30.0) -> tuple[dict, str]:
+def fetch(url: str = FEED_URL_WEEK, timeout: float = 30.0) -> tuple[dict, str]:
     """Fetch the summary feed. Returns (raw_json, final_url_actually_fetched)."""
     import requests
 

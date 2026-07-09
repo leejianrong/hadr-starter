@@ -234,6 +234,48 @@ attributed and never summed; RSS-mode gaps (status/type/full-ISO3/date.event/
 pagination) are flagged loud on the page. Suite now 102 tests; ruff clean.
 **Every planned slice (V1–V5) is now built; the R0–R8 matrix is satisfied.**
 
+### 2026-07-09 — V6: livelier dashboard (7-day history, scan summary, activity chart, restyle, 15:00 run)
+
+A presentation + context slice (no new feed). Driven by the report reading too sparse
+on quiet mornings.
+
+- **Past-7-days section.** USGS now fetches `all_week.geojson`; the pipeline declusters
+  the whole week and splits clusters by mainshock time: last-24h → the sudden-onset
+  brief (`report.items`), 24h–7d → a new context section (`report.recent`). GDACS
+  splits the same way (current/last-24h vs closed-with-onset-in-week). `report.clusters`
+  stays the 24h set so the model brief and V1–V5 call sites are unchanged.
+- **Union change-detection (a correctness fix).** Change detection + retractions now
+  run over the full 7-day kept set, not just the 24h slice. Previously a significant
+  event would age out of the 24h window each day and be reported as a CORRECTED
+  withdrawal — a spurious retraction. Now an event ageing from the brief into the
+  context section is still "seen", so only a real withdrawal or below-threshold drop
+  retracts (still `feed_ok`-guarded).
+- **Scanned-vs-shown summary + activity chart.** A `ScanSummary` carries per-feed
+  scanned counts and shown counts (today / week / ongoing); the renderer shows an
+  honest "Scanned N, cleared the bar M" line and a deterministic inline-SVG stacked
+  bar chart of significant events per SGT day over 7 days, coloured by severity. No
+  JS, no external deps — it stays byte-stable.
+- **Duty Desk restyle.** `render.py`'s template now uses the same ink / mono /
+  alert-triad language as the landing page, so the two read as one product. Committed
+  to a single dark theme deliberately (an ops desk). All text strings the tests assert
+  were preserved.
+- **Second daily run.** `sitrep.yml` gains a 15:00 SGT (07:00 UTC) schedule. The
+  window label is derived from run time, so the afternoon run reads "last 24h ending
+  15:00 SGT" with no code change; the model still wakes only on a loud change.
+
+DoD verified with a live all-feeds run (6 sudden + 4 past-week + 20 ongoing; scan line
+and chart populated). Suite now 108 tests; ruff clean.
+
+**CI push fix (bundled, since it touches the same workflow).** The first real
+scheduled run that produced a diff failed at the publish `git push` with "Password
+authentication is not supported." Root cause (from the run logs): the token was fine
+(`permissions: contents: write` did grant write), but `anthropics/claude-code-action@v1`
+removes the auth header `actions/checkout` persisted and rewrites `origin` with its own
+non-GitHub token, so the later bare `git push` inherited a broken credential. Fix: push
+with an explicit `https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/…` URL,
+which is immune to what the action leaves behind. No repo setting change needed; the
+YAML `permissions:` block is now load-bearing (repo default is read-only).
+
 ## Open questions
 
 - **ReliefWeb API `appname` — OWNER ACTION (external, no-SLA).** The API has

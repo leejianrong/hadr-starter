@@ -240,6 +240,36 @@ class ReportItem:
 
 
 @dataclass
+class ActivityDay:
+    """One day's bucket for the activity chart — counts of shown clusters by severity
+    rank (0 none/green · 1 yellow · 2 orange · 3 red)."""
+
+    label: str                       # short SGT day label, e.g. "Jul 03"
+    counts: dict[int, int] = field(default_factory=dict)
+
+    @property
+    def total(self) -> int:
+        return sum(self.counts.values())
+
+
+@dataclass
+class ScanSummary:
+    """Honest 'what was scanned vs what cleared the bar' line (never hide the filter)."""
+
+    usgs_scanned: int = 0
+    gdacs_scanned: int = 0
+    reliefweb_scanned: int = 0
+    shown_today: int = 0             # sudden-onset (last 24h)
+    shown_week: int = 0              # past 7 days (24h–7d)
+    ongoing: int = 0                 # curated slow-onset
+    activity: list[ActivityDay] = field(default_factory=list)
+
+    @property
+    def total_scanned(self) -> int:
+        return self.usgs_scanned + self.gdacs_scanned + self.reliefweb_scanned
+
+
+@dataclass
 class FeedHealth:
     """One feed's liveness line — always shown, degrade loud (ADR-0007)."""
 
@@ -273,8 +303,11 @@ class Report:
     clusters: list[Cluster]      # EQ clusters (state/change path + the model brief)
     feeds: list[FeedHealth]
     coverage_note: str
-    items: list[ReportItem] = field(default_factory=list)  # sudden-onset, ranked
+    items: list[ReportItem] = field(default_factory=list)  # sudden-onset (last 24h), ranked
+    # past 7 days (24h–7d) — significant events for context, not the morning brief:
+    recent: list[ReportItem] = field(default_factory=list)
     # slow-onset / curated section (U3), window-exempt:
     ongoing: list[ReportItem] = field(default_factory=list)
     retractions: list[Retraction] = field(default_factory=list)
+    scan: "ScanSummary | None" = None   # scanned-vs-shown counts + activity chart data
     is_loud: bool = False        # any NEW/REVISED/retraction since last run (ADR-0005)
