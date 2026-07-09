@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS reliefweb_disasters (
     iso3         TEXT,             -- space-joined ISO3 list
     last_seen    TEXT NOT NULL     -- ISO-8601 UTC
 );
+CREATE TABLE IF NOT EXISTS notifications (
+    key         TEXT PRIMARY KEY, -- "EQ:<usgs id>" / "GDACS:<eventtype><eventid>"
+    kind        TEXT,             -- EQ / TC / FL / WF … (display only)
+    level       INTEGER NOT NULL, -- last-notified notify-level (see notify.notify_level)
+    place       TEXT,
+    notified_at TEXT NOT NULL     -- ISO-8601 UTC of the last push for this key
+);
 """
 
 
@@ -88,6 +95,20 @@ class ReliefWebStateRow:
     hazard_code: str
     iso3: tuple[str, ...]
     last_seen: datetime
+
+
+@dataclass
+class NotifyRow:
+    """The last Telegram push we sent for one event — the idempotency marker so the
+    ~hourly notify loop never re-blasts the same alert each tick (see scripts.notify).
+    `level` is the notify-level last pushed; a later tick only re-sends on an
+    escalation *above* it."""
+
+    key: str
+    kind: str
+    level: int
+    place: str
+    notified_at: datetime
 
 
 class StateStore:
@@ -214,6 +235,37 @@ class StateStore:
                 [
                     (row.key, row.glide, row.url, row.title, row.hazard_code,
                      " ".join(row.iso3), _iso(row.last_seen))
+                    for row in rows
+                ],
+            )
+
+    def load_notifications(self) -> dict[str, NotifyRow]:
+        rows = self._conn.execute(
+            "SELECT key, kind, level, place, notified_at FROM notifications"
+        ).fetchall()
+        out: dict[str, NotifyRow] = {}
+        for r in rows:
+            out[r[0]] = NotifyRow(
+                key=r[0],
+                kind=r[1] or "",
+                level=int(r[2]),
+                place=r[3] or "",
+                notified_at=datetime.fromisoformat(r[4]),
+            )
+        return out
+
+    def upsert_notifications(self, rows: list[NotifyRow]) -> None:
+        """Insert-or-update the given markers. Unlike the feed tables this is an
+        UPSERT, never a wholesale replace: a key we didn't push this tick must keep
+        its prior level so it isn't re-alerted next run."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO notifications (key, kind, level, place, notified_at) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET "
+                "kind=excluded.kind, level=excluded.level, place=excluded.place, "
+                "notified_at=excluded.notified_at",
+                [
+                    (row.key, row.kind, int(row.level), row.place, _iso(row.notified_at))
                     for row in rows
                 ],
             )

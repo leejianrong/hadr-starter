@@ -309,3 +309,48 @@ pagination) are flagged loud on the page. Suite now 102 tests; ruff clean.
   the `brief.json` `loud` flag the workflow branches on reads correctly. All three
   feeds' state shares `hadr-state.sqlite3` (already cached); each degrades loud
   independently; ReliefWeb's RSS path needs no secret.
+
+### 2026-07-09 — Telegram alerts, Phase 1 (deterministic)
+
+The "(c)" agentic/Telegram feature, built as a **second scheduled workflow**
+(`notify.yml`, ~hourly) on the fast feeds only. Phase 1 is fully deterministic —
+**no model is in the alert loop** — matching Shape A (ADR-0002/0005). A later
+Phase 2 may let a cheap model (Claude Haiku via `claude-code-action`, the same
+provider as the daily narrator) *refine the wording* of an already-composed
+message; it will never gain a vote on severity, merges, or whether to fire.
+
+- **The loop reuses the daily pipeline, not a new one.** `scripts/notify.py`
+  calls `sitrep.build_report` with USGS + GDACS (ReliefWeb off — it's days-latent,
+  so it stays on the daily page, never the alert loop) and reads `report.items`.
+  It passes *empty* priors on purpose: the notify loop derives its trigger from its
+  OWN "last notified" markers (below), not the daily page's change flags, so the
+  page-oriented change detection inside `build_report` is irrelevant here.
+- **Chattiness gate (`notify.notify_level`).** The user chose "new event OR
+  escalation reaching orange/red." Only orange/red impact reaches a phone;
+  sub-orange stays on the daily page (anti-cry-wolf). **Deviation worth flagging:**
+  a major earthquake PAGER hasn't scored yet (`alert=None`, so rank 0) would be
+  silenced by a pure colour gate — an obvious failure. So an unscored mww-family
+  quake at M≥`NOTIFY_MAG_UNSCORED` (6.0) is treated as orange-equivalent *priority*
+  (never a severity claim — the message says "not yet scored for impact"). Both
+  thresholds are named, tunable constants (CLAUDE.md #1).
+- **Idempotency = a `notifications` table (its own Actions cache).** Keyed per
+  event (`EQ:<usgs id>` / `GDACS:<type><id>`), storing the last-notified level. A
+  tick re-sends only on an *escalation above* that level; a de-escalation or a
+  repeat never re-fires. Persisted only *after* a confirmed send — a push that
+  errored is not recorded, so it isn't lost. Separate DB from `hadr-state.sqlite3`
+  so the two cadences never race on one file.
+  - **Caveat (USGS #1):** the USGS top-level id can change between runs; a re-keyed
+    quake could, worst case, alert once more. Bounded and rare within an hourly loop
+    — accepted for Phase 1 rather than reintroducing the full ids-set match here.
+- **Transport = one HTTPS POST (`scripts/telegram.py`), no bot framework / webhook /
+  host** (matches the "no always-on host" scope). HTML parse mode; all dynamic text
+  `html.escape`d. `requests` imported lazily so the gate + formatter stay
+  offline-testable with no token and no network.
+- **Config is env-only:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (a channel/group),
+  optional `NOTIFY_DASHBOARD_URL`. The workflow falls back to `--dry-run` when the
+  secrets are absent (forks) so the scheduled job stays green instead of failing.
+- **Not yet verified live** (no bot token configured in this repo yet): exercised
+  end-to-end via `--dry-run` over the saved fixtures (a real GDACS orange TC
+  produced a correct, escaped message) and unit-tested for the gate, idempotency
+  (first-sight / same-level / escalation / de-escalation / below-threshold), and
+  formatting. Live send pending the `@BotFather` token + channel id — see README.

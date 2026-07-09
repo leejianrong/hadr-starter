@@ -1,0 +1,61 @@
+# HADR alerts — the ~hourly one-way Telegram push on a new/escalated fast-feed event.
+#
+# A second, lighter cadence than the daily "Morning sitrep" (sitrep.yml). It runs
+# only the FAST feeds (USGS + GDACS) — ReliefWeb is days-latent and stays daily —
+# and pushes a Telegram message when the DETERMINISTIC gate in scripts/notify.py
+# says an orange+/new event crossed the bar. No model is in this loop (Phase 1);
+# no git push (the "last notified" state rides the Actions cache, like the daily
+# job's), so this workflow needs no write permission.
+name: HADR alerts
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "5 * * * *"   # ~hourly, 5 past (GitHub cron isn't reliable below hourly)
+
+permissions:
+  contents: read
+
+# Never let two ticks run the loop at once (a slow fetch + the next cron firing
+# could double-send). Latest wins; in-flight run is cancelled.
+concurrency:
+  group: hadr-alerts
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+
+      # Idempotency state: remember what we've already alerted so we don't re-blast
+      # the same event each tick. Own cache namespace, separate from the daily job's
+      # hadr-state — the two cadences must not share one SQLite file.
+      - uses: actions/cache@v4
+        with:
+          path: hadr-notify-state.sqlite3
+          key: hadr-notify-state-${{ github.run_id }}
+          restore-keys: hadr-notify-state-
+
+      # Deterministic: fetch USGS + GDACS, apply the push gate, send via Telegram.
+      # If the secrets aren't configured (e.g. a fork), fall back to --dry-run so the
+      # scheduled job stays green instead of failing on a missing token.
+      - name: Send alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTIFY_DASHBOARD_URL: ${{ vars.NOTIFY_DASHBOARD_URL }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — running --dry-run (no send)."
+            uv run --frozen python -m scripts.notify --dry-run
+          else
+            uv run --frozen python -m scripts.notify
+          fi
+
+      - run: echo "### HADR alerts tick — $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
