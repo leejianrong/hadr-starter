@@ -20,7 +20,18 @@ from pathlib import Path
 from . import changes, cluster, gdacs, reliefweb, render, severity, usgs
 from . import decluster as dc
 from .geo import Geo
-from .model import FeedHealth, GdacsEvent, ReliefWebDisaster, Report, ReportItem, from_ms
+from .model import (
+    ALERT_RANK,
+    SGT,
+    ActivityDay,
+    FeedHealth,
+    GdacsEvent,
+    ReliefWebDisaster,
+    Report,
+    ReportItem,
+    ScanSummary,
+    from_ms,
+)
 from .state import (
     DEFAULT_PATH,
     GdacsStateRow,
@@ -29,7 +40,6 @@ from .state import (
     StateStore,
 )
 
-WINDOW_HOURS = 24
 COVERAGE_USGS_ONLY = (
     "Coverage: earthquakes only (USGS). No flood/cyclone/epidemic/conflict "
     "monitoring yet. Onshore is approximated as inside a country polygon."
@@ -45,6 +55,8 @@ COVERAGE_FULL = (
     "feed-health for what the API would add. Onshore is approximated as inside a "
     "country polygon."
 )
+WINDOW_HOURS = 24        # sudden-onset "what's new" window
+LOOKBACK_DAYS = 7        # Past-7-days context section reaches back this far
 log = logging.getLogger("sitrep")
 
 
@@ -66,14 +78,23 @@ def build_report(
     ReliefWeb passes (when run) hang off `result.gdacs` / `result.reliefweb` so
     V1–V3's 2-tuple unpacking is unchanged.
     """
-    window_start = now_utc - timedelta(hours=WINDOW_HOURS)
+    window_start = now_utc - timedelta(hours=WINDOW_HOURS)   # last 24h (the brief)
+    week_start = now_utc - timedelta(days=LOOKBACK_DAYS)      # past 7 days (context)
+
     quakes = usgs.parse(raw, geo=geo)
-    in_window = [q for q in quakes if window_start <= q.time <= now_utc]
+    in_week = [q for q in quakes if week_start <= q.time <= now_utc]
 
-    clusters = dc.decluster(in_window)
-    kept = [c for c in clusters if severity.passes_threshold(c.mainshock)]
+    # Decluster over the whole week, then split by mainshock time: fresh clusters are
+    # the sudden-onset brief; older ones are the Past-7-days context section.
+    week_clusters = dc.decluster(in_week)
+    kept = [c for c in week_clusters if severity.passes_threshold(c.mainshock)]
     kept.sort(key=severity.cluster_sort_key, reverse=True)
+    today_clusters = [c for c in kept if c.mainshock.time >= window_start]
+    recent_clusters = [c for c in kept if c.mainshock.time < window_start]
 
+    # Change detection runs over the FULL 7-day kept set so an event ageing from the
+    # 24h brief into the context section is still "seen" — never a spurious retraction
+    # just for getting older (only a real withdrawal/below-threshold drop retracts).
     result = changes.detect(prior, kept, feed_ok=feed_ok, now=now_utc)
 
     gen = usgs.generated_ms(raw)
@@ -86,33 +107,47 @@ def build_report(
     is_loud = result.is_loud
     gdacs_result: changes.GdacsDetectResult | None = None
     coverage = COVERAGE_USGS_ONLY
+    usgs_scanned = len(in_week)
+    gdacs_scanned = reliefweb_scanned = 0
 
     # --- GDACS multi-hazard + the cross-feed join (V4) ---
-    kept_gdacs: list[GdacsEvent] = []
+    gdacs_today: list[GdacsEvent] = []
+    gdacs_recent: list[GdacsEvent] = []
     if gdacs_feed is not None:
         coverage = COVERAGE_MULTIHAZARD
         feeds.append(gdacs_feed)
+        gdacs_scanned = len(gdacs_events or [])
         gprior = gdacs_prior or {}
-        # Window on CURRENCY, not onset. Cyclones/floods/wildfires run for days: a
-        # Red cyclone that began a week ago is still the top of today's report while
-        # `iscurrent` holds. Windowing those out on onset time would be the "infer
-        # 'ended' from age" error (GDACS #cap / ADR-0007). Non-current alerts fall
-        # back to the 24h onset window so a stale record doesn't linger forever.
-        windowed = [
+        # Sudden-onset windows on CURRENCY, not onset. Cyclones/floods/wildfires run
+        # for days: a Red cyclone begun a week ago is still today's top line while
+        # `iscurrent` holds. Inferring "ended" from age would be the ADR-0007 error.
+        gdacs_today = [
             e for e in (gdacs_events or [])
-            if e.is_current
-            or (e.from_date is not None and window_start <= e.from_date <= now_utc)
+            if severity.gdacs_passes_threshold(e)
+            and (e.is_current
+                 or (e.from_date is not None and window_start <= e.from_date <= now_utc))
         ]
-        kept_gdacs = [e for e in windowed if severity.gdacs_passes_threshold(e)]
+        # Past-7-days GDACS: significant events that have since closed (not current)
+        # with an onset inside the week but before the 24h brief.
+        gdacs_recent = [
+            e for e in (gdacs_events or [])
+            if severity.gdacs_passes_threshold(e) and not e.is_current
+            and e.from_date is not None and week_start <= e.from_date < window_start
+        ]
         gdacs_result = changes.detect_gdacs(
-            gprior, kept_gdacs, feed_ok=gdacs_feed.ok, now=now_utc
+            gprior, gdacs_today, feed_ok=gdacs_feed.ok, now=now_utc
         )
         retractions.extend(gdacs_result.retractions)
         is_loud = is_loud or gdacs_result.is_loud
 
-    items = cluster.join(result.clusters, kept_gdacs)
+    result.clusters = today_clusters   # brief + narrator see only the 24h set
+    items = cluster.join(today_clusters, gdacs_today)
     _annotate_changes(items, gdacs_result)
     items.sort(key=severity.item_sort_key, reverse=True)
+
+    recent = cluster.join(recent_clusters, gdacs_recent)
+    _annotate_changes(recent, None)    # historical context; GDACS-recent isn't re-flagged
+    recent.sort(key=severity.item_sort_key, reverse=True)
 
     # --- ReliefWeb curated disasters + slow-onset/ongoing section (V5) ---
     ongoing: list[ReportItem] = []
@@ -121,6 +156,7 @@ def build_report(
         coverage = COVERAGE_FULL
         feeds.append(reliefweb_feed)
         disasters = reliefweb_disasters or []
+        reliefweb_scanned = len(disasters)
         # Every curated disaster clears the bar (the "reached ReliefWeb" floor,
         # ADR-0004 branch 3) and is window-exempt — slow-onset has no onset instant.
         reliefweb_result = changes.detect_reliefweb(reliefweb_prior or {}, disasters,
@@ -134,21 +170,53 @@ def build_report(
                 it.change, it.change_reason = rchanges.get(it.reliefweb.key, (None, ""))
         ongoing.sort(key=severity.ongoing_sort_key, reverse=True)
 
+    scan = ScanSummary(
+        usgs_scanned=usgs_scanned,
+        gdacs_scanned=gdacs_scanned,
+        reliefweb_scanned=reliefweb_scanned,
+        shown_today=len(items),
+        shown_week=len(recent),
+        ongoing=len(ongoing),
+        activity=_build_activity(now_utc, kept, gdacs_today + gdacs_recent),
+    )
+
     result.gdacs = gdacs_result
     result.reliefweb = reliefweb_result
     report = Report(
         publish_utc=now_utc,
         window_start_utc=window_start,
         window_end_utc=now_utc,
-        clusters=result.clusters,
+        clusters=today_clusters,
         feeds=feeds,
         coverage_note=coverage,
         items=items,
+        recent=recent,
         ongoing=ongoing,
         retractions=retractions,
+        scan=scan,
         is_loud=is_loud,
     )
     return report, result
+
+
+def _build_activity(now_utc: datetime, eq_clusters, gdacs_events) -> list[ActivityDay]:
+    """Per-day counts (by severity rank) over the last 7 days, for the activity chart.
+    Uses SGT calendar days so the bars line up with the report's clock."""
+    today_sgt = now_utc.astimezone(SGT).date()
+    days = [today_sgt - timedelta(days=n) for n in range(LOOKBACK_DAYS - 1, -1, -1)]
+    buckets = {d: ActivityDay(label=d.strftime("%b %d"), counts={0: 0, 1: 0, 2: 0, 3: 0})
+               for d in days}
+    for c in eq_clusters:
+        d = c.mainshock.time.astimezone(SGT).date()
+        if d in buckets:
+            buckets[d].counts[severity.severity_rank(c.mainshock)] += 1
+    for e in gdacs_events:
+        if e.from_date is None:
+            continue
+        d = e.from_date.astimezone(SGT).date()
+        if d in buckets:
+            buckets[d].counts[ALERT_RANK.get(e.alert, 0)] += 1
+    return [buckets[d] for d in days]
 
 
 def _annotate_changes(items: list[ReportItem],
