@@ -1,0 +1,379 @@
+{
+ "type": "FeatureCollection",
+ "metadata": {
+  "note": "trimmed real GDACS EVENTS4APP sample captured 2026-07-08; live feed returned 100 (rolling cap)",
+  "totallive": 100
+ },
+ "features": [
+  {
+   "type": "Feature",
+   "bbox": [
+    133.0,
+    16.9,
+    133.0,
+    16.9
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     133.0,
+     16.9
+    ]
+   },
+   "properties": {
+    "eventtype": "TC",
+    "eventid": 1001279,
+    "episodeid": 30,
+    "eventname": "BAVI-26",
+    "glide": "TC-2026-000099-GUM",
+    "name": "Tropical Cyclone BAVI-26",
+    "description": "Tropical Cyclone BAVI-26",
+    "htmldescription": "Red Tropical Cyclone BAVI-26 in Guam, Northern Mariana Islands, Japan, Taiwan, China from: 01 Jul 2026  to: 08 Jul 2026 .",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Red/TC.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Red/TC.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=1001279&episodeid=30",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1001279&episodeid=30&eventtype=TC",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001279"
+    },
+    "alertlevel": "Red",
+    "alertscore": 3,
+    "episodealertlevel": "Red",
+    "episodealertscore": 3.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Guam, Northern Mariana Islands, Japan, Taiwan, China",
+    "fromdate": "2026-07-01T00:00:00",
+    "todate": "2026-07-08T06:00:00",
+    "datemodified": "2026-07-08T10:20:11",
+    "iso3": "CHN",
+    "source": "JTWC",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "countryonland": "",
+    "affectedcountries": [
+     {
+      "iso2": "GU",
+      "iso3": "GUM",
+      "countryname": "Guam"
+     },
+     {
+      "iso2": "JP",
+      "iso3": "JPN",
+      "countryname": "Japan"
+     },
+     {
+      "iso2": "TW",
+      "iso3": "TWN",
+      "countryname": "Taiwan"
+     },
+     {
+      "iso2": "CN",
+      "iso3": "CHN",
+      "countryname": "China"
+     }
+    ],
+    "severitydata": {
+     "severity": 287.0352,
+     "severitytext": "Hurricane/Typhoon > 74 mph (maximum wind speed of 287 km/h)",
+     "severityunit": "km/h"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    168.8353,
+    -20.2559,
+    168.8353,
+    -20.2559
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     168.8353,
+     -20.2559
+    ]
+   },
+   "properties": {
+    "eventtype": "EQ",
+    "eventid": 1550772,
+    "episodeid": 1716973,
+    "eventname": "",
+    "glide": "",
+    "name": "Earthquake in Vanuatu",
+    "description": "Earthquake in Vanuatu",
+    "htmldescription": "Green M 5.8 Earthquake in Vanuatu at: 08 Jul 2026 09:50:23.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=EQ&eventid=1550772&episodeid=1716973",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1550772&episodeid=1716973&eventtype=EQ",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=EQ&eventid=1550772"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Vanuatu",
+    "fromdate": "2026-07-08T09:50:23",
+    "todate": "2026-07-08T09:50:23",
+    "datemodified": "2026-07-08T10:24:31",
+    "iso3": "VUT",
+    "source": "NEIC",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "VU",
+      "iso3": "VUT",
+      "countryname": "Vanuatu"
+     }
+    ],
+    "severitydata": {
+     "severity": 5.8,
+     "severitytext": "Magnitude 5.8M, Depth:10km",
+     "severityunit": "M"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    127.4396,
+    1.8113,
+    127.4396,
+    1.8113
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     127.4396,
+     1.8113
+    ]
+   },
+   "properties": {
+    "eventtype": "EQ",
+    "eventid": 1550763,
+    "episodeid": 1716963,
+    "eventname": "",
+    "glide": "",
+    "name": "Earthquake in Indonesia",
+    "description": "Earthquake in Indonesia",
+    "htmldescription": "Green M 4.8 Earthquake in Indonesia at: 08 Jul 2026 08:36:06.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=EQ&eventid=1550763&episodeid=1716963",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1550763&episodeid=1716963&eventtype=EQ",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=EQ&eventid=1550763"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Indonesia",
+    "fromdate": "2026-07-08T08:36:06",
+    "todate": "2026-07-08T08:36:06",
+    "datemodified": "2026-07-08T09:16:26",
+    "iso3": "IDN",
+    "source": "NEIC",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "ID",
+      "iso3": "IDN",
+      "countryname": "Indonesia"
+     }
+    ],
+    "severitydata": {
+     "severity": 4.8,
+     "severitytext": "Magnitude 4.8M, Depth:141.091km",
+     "severityunit": "M"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    170.9698,
+    -45.1,
+    170.9698,
+    -45.1
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     170.9698,
+     -45.1
+    ]
+   },
+   "properties": {
+    "eventtype": "FL",
+    "eventid": 1104006,
+    "episodeid": 1,
+    "eventname": "",
+    "glide": "",
+    "name": "Flood in New Zealand",
+    "description": "Flood in New Zealand",
+    "htmldescription": "Green Flood in New Zealand from: 05 Jul 2026 01 to: 07 Jul 2026 01.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/FL.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/FL.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=FL&eventid=1104006&episodeid=1",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1104006&episodeid=1&eventtype=FL",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=FL&eventid=1104006"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.5,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "New Zealand",
+    "fromdate": "2026-07-05T01:00:00",
+    "todate": "2026-07-07T01:00:00",
+    "datemodified": "2026-07-07T06:08:23",
+    "iso3": "NZL",
+    "source": "GLOFAS",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "NZ",
+      "iso3": "NZL",
+      "countryname": "New Zealand"
+     }
+    ],
+    "severitydata": {
+     "severity": 0.0,
+     "severitytext": "Magnitude 0 ",
+     "severityunit": ""
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    21.6214,
+    -9.2084,
+    21.6214,
+    -9.2084
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     21.6214,
+     -9.2084
+    ]
+   },
+   "properties": {
+    "eventtype": "WF",
+    "eventid": 1029380,
+    "episodeid": 1,
+    "eventname": "",
+    "glide": "",
+    "name": "Forest fires in Angola",
+    "description": "Forest fires in Angola",
+    "htmldescription": "Green Forest fires in Angola from: 29 Jun 2026 to: 08 Jul 2026.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=WF&eventid=1029380&episodeid=1",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1029380&episodeid=1&eventtype=WF",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=WF&eventid=1029380"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.5,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Angola",
+    "fromdate": "2026-06-29T00:00:00",
+    "todate": "2026-07-08T00:00:00",
+    "datemodified": "2026-07-08T07:10:31",
+    "iso3": "AGO",
+    "source": "GWIS",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "AO",
+      "iso3": "AGO",
+      "countryname": "Angola"
+     }
+    ],
+    "severitydata": {
+     "severity": 5254.0,
+     "severitytext": "Green impact for forestfire in 5254 ha",
+     "severityunit": "ha"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    110.278,
+    64.8431,
+    110.278,
+    64.8431
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     110.278,
+     64.8431
+    ]
+   },
+   "properties": {
+    "eventtype": "WF",
+    "eventid": 1029375,
+    "episodeid": 2,
+    "eventname": "",
+    "glide": "",
+    "name": "Forest fires in Russian Federation",
+    "description": "Forest fires in Russian Federation",
+    "htmldescription": "Green Forest fires in Russian Federation from: 03 Jul 2026 to: 08 Jul 2026.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=WF&eventid=1029375&episodeid=2",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1029375&episodeid=2&eventtype=WF",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=WF&eventid=1029375"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.5,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Russian Federation",
+    "fromdate": "2026-07-03T00:00:00",
+    "todate": "2026-07-08T00:00:00",
+    "datemodified": "2026-07-08T07:04:51",
+    "iso3": "RUS",
+    "source": "GWIS",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [],
+    "severitydata": {
+     "severity": 5182.0,
+     "severitytext": "Green impact for forestfire in 5182 ha",
+     "severityunit": "ha"
+    }
+   }
+  }
+ ]
+}

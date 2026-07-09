@@ -79,6 +79,21 @@ line in the renderer. **DoD met:** run twice sharing state → first run flags N
 withdrawn/downgraded event yields an explicit CORRECTED line — with the `feed_ok`
 guard so an outage never manufactures a deletion. Still no model / schedule (V3).
 
+## V4 — GDACS multi-hazard + cross-feed join ✅ built (2026-07-09)
+
+Adds `scripts/gdacs.py` (RSS-first adapter, JSON drop-in — every GDACS parsing
+trap handled), `scripts/cluster.py` (the confidence ladder from
+`SPIKE-cross-feed-confidence`, EQ identity link first), a unified `ReportItem`,
+GDACS colour threshold + cross-hazard ranking, and a parallel GDACS state/change
+path keyed on `(eventtype, eventid)`. **DoD met:** cyclones/floods/wildfires
+appear ranked by GDACS alert colour; a GDACS-EQ and its USGS-EQ merge to ONE line
+(`independent=False` — never double-counted); GDACS feed-health shown with the
+100-cap warning; green GDACS noise filtered; low-confidence pairs cross-linked,
+never silently merged. Ranking uses the alert **colour** not the raw `alertscore`
+(the JSON/RSS scores aren't interchangeable) and GDACS hazards are windowed on
+currency — both recorded in `implementation-notes.md`. GDACS is opt-in (`--gdacs`);
+wiring it into `sitrep.yml` is a follow-up. Suite: 83 tests, ruff clean.
+
 ## V3 — model narrator + notification + 08:30 routine ✅ built (2026-07-08)
 
 Wires the expensive layer, guarded by the deterministic one (ADR-0005). `sitrep.py`

@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS clusters (
     last_seen  TEXT NOT NULL,      -- ISO-8601 UTC
     published  INTEGER NOT NULL    -- 1 if it was shown on the page
 );
+CREATE TABLE IF NOT EXISTS gdacs_events (
+    key          TEXT PRIMARY KEY, -- (eventtype, eventid) — ADR-0001 GDACS key
+    eventtype    TEXT NOT NULL,
+    eventid      INTEGER NOT NULL,
+    peak_level   TEXT,             -- last-published peak alert colour
+    episode_level TEXT,            -- last-published current-episode colour
+    name         TEXT,
+    iso3         TEXT,             -- space-joined ISO3 list
+    last_seen    TEXT NOT NULL,    -- ISO-8601 UTC
+    published    INTEGER NOT NULL
+);
 """
 
 
@@ -42,6 +53,19 @@ class StateRow:
     lat: float | None
     lon: float | None
     place: str
+    last_seen: datetime
+    published: bool
+
+
+@dataclass
+class GdacsStateRow:
+    key: str
+    eventtype: str
+    eventid: int
+    peak_level: str
+    episode_level: str
+    name: str
+    iso3: tuple[str, ...]
     last_seen: datetime
     published: bool
 
@@ -94,6 +118,48 @@ class StateStore:
                         row.lat,
                         row.lon,
                         row.place,
+                        _iso(row.last_seen),
+                        int(row.published),
+                    )
+                    for row in rows
+                ],
+            )
+
+    def load_gdacs(self) -> dict[str, GdacsStateRow]:
+        rows = self._conn.execute(
+            "SELECT key, eventtype, eventid, peak_level, episode_level, name, iso3, "
+            "last_seen, published FROM gdacs_events"
+        ).fetchall()
+        out: dict[str, GdacsStateRow] = {}
+        for r in rows:
+            out[r[0]] = GdacsStateRow(
+                key=r[0],
+                eventtype=r[1] or "",
+                eventid=r[2],
+                peak_level=r[3] or "",
+                episode_level=r[4] or "",
+                name=r[5] or "",
+                iso3=tuple(s for s in (r[6] or "").split(" ") if s),
+                last_seen=datetime.fromisoformat(r[7]),
+                published=bool(r[8]),
+            )
+        return out
+
+    def replace_gdacs(self, rows: list[GdacsStateRow]) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM gdacs_events")
+            self._conn.executemany(
+                "INSERT INTO gdacs_events (key, eventtype, eventid, peak_level, "
+                "episode_level, name, iso3, last_seen, published) VALUES (?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        row.key,
+                        row.eventtype,
+                        row.eventid,
+                        row.peak_level,
+                        row.episode_level,
+                        row.name,
+                        " ".join(row.iso3),
                         _iso(row.last_seen),
                         int(row.published),
                     )
