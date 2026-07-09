@@ -36,9 +36,12 @@ jobs:
           restore-keys: hadr-state-
 
       # 1. Deterministic: always regenerate the page + emit the brief with `loud`.
+      #    --gdacs adds the GDACS multi-hazard feed (RSS-first) + the cross-feed
+      #    join. GDACS change-detection state lives in the same hadr-state.sqlite3,
+      #    so the rolling cache above already persists it — no extra cache key.
       - id: run
         run: |
-          uv run --frozen python -m scripts.sitrep --brief brief.json
+          uv run --frozen python -m scripts.sitrep --gdacs --brief brief.json
           echo "loud=$(jq -r .loud brief.json)" >> "$GITHUB_OUTPUT"
 
       # 2. Narrative — ONLY on a loud change. The model writes prose to narrative.md.

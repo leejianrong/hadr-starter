@@ -53,6 +53,18 @@ def _where(q: Quake) -> str:
     return html.escape(q.place or tag) + marker
 
 
+def _eq_where(item: ReportItem) -> str:
+    """Where-label for an earthquake line. Our onshore test uses coarse (110m)
+    country polygons, so a genuinely-onshore quake near a coast can read as
+    offshore; if a merged GDACS record supplies the country, prefer it (attributed)
+    rather than a bare '(offshore)'."""
+    q = item.eq.mainshock
+    if not q.iso3 and item.gdacs is not None and item.gdacs.iso3:
+        return (html.escape(f"{q.place} [{', '.join(item.gdacs.iso3)}]")
+                + ' <span class="muted">(country via GDACS)</span>')
+    return _where(q)
+
+
 def _mag(q: Quake) -> str:
     if q.mag is None:
         return "M?"
@@ -129,7 +141,7 @@ def _eq_line(item: ReportItem, now: datetime) -> str:
     return (
         '<li class="event">'
         f"{_flag(item.change, item.change_reason)}{_chip(item.alert)}"
-        f'<span class="what">{_where(q)}</span>'
+        f'<span class="what">{_eq_where(item)}</span>'
         f'<span class="meta">{_mag(q)}{_sequence(c)} · depth {q.depth_km:.0f} km'
         f' · {_sgt(q.time)} ({_age(q.time, now)}){reason}</span>'
         f"{_provenance(item)}"

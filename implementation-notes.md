@@ -184,13 +184,42 @@ ranked by GDACS alert colour; a GDACS-EQ and its USGS-EQ resolve to one line;
 green GDACS noise is filtered; low-confidence pairs are cross-linked, not merged;
 GDACS state persists so a second run is quiet. Suite now 83 tests; ruff clean.
 
+### 2026-07-09 — V4 follow-ups
+
+Closed the three follow-ups flagged above:
+
+1. **`--gdacs` wired into `sitrep.yml`** — the 08:30 routine now runs the GDACS
+   multi-hazard join live. GDACS change-detection state lives in the same
+   `hadr-state.sqlite3`, so the existing rolling `actions/cache` persists it with
+   no extra cache key.
+2. **ReliefWeb appname** — turned into a concrete, ready-to-submit owner action
+   (appname, purpose text, contact, secret name) under Open questions. Still an
+   external form; not automatable.
+3. **Merged-EQ country label** — a merged earthquake whose USGS point reverse-
+   geocodes offshore (our onshore test uses coarse 110m polygons) now borrows the
+   merged GDACS record's ISO3, shown attributed as "(country via GDACS)" instead of
+   a bare "(offshore)". Rendering-only; numbers untouched. Suite now 84 tests.
+
 ## Open questions
 
-- ReliefWeb API `appname` approval is a manual, no-SLA process (Google Form +
-  email since 1 Nov 2025). Request it now so the API path is unblocked later;
-  build against RSS meanwhile (blindspot ReliefWeb notes). *Not yet requested.*
-- GDACS `--gdacs` is **opt-in** on the CLI for now; wiring it into the 08:30
-  workflow (`sitrep.yml`) is a follow-up (needs the RSS fetch step + cache key).
+- **ReliefWeb API `appname` — OWNER ACTION (external, no-SLA).** The API has
+  required a pre-approved `appname` since 1 Nov 2025 (unapproved → 403; missing →
+  400; v1 → 410). Approval is a form + email confirmation with no published SLA,
+  so it must be requested by a human now to unblock the V5→API upgrade later; V5
+  itself ships on RSS and does **not** block on this.
+  - Request at: https://apidoc.reliefweb.int/parameters#appname
+  - Proposed appname: **`hadr-monitor-sitrep`** (lowercase, stable — it's the
+    rate-limit identity; keep it constant once approved).
+  - Purpose to state on the form: *"Daily humanitarian situation report —
+    read-only, ~1 call/day at 08:30 SGT against `/v2/disasters?preset=latest`,
+    well under the 1000 calls/day quota."*
+  - Contact: the repo owner's email (`leejianrong2@gmail.com`).
+  - When approved: store it as the `RELIEFWEB_APPNAME` Actions secret and switch
+    the adapter from RSS to the API path (the V5 adapter is built as a drop-in).
+  - **Status: not yet requested** (blocked on human form submission).
+- ~~GDACS `--gdacs` opt-in / not in the workflow~~ — **done (2026-07-09):**
+  `sitrep.yml` step 1 now runs `--gdacs`; GDACS state shares `hadr-state.sqlite3`,
+  so the existing rolling `actions/cache` persists it with no extra key.
 
 ## Deviations
 

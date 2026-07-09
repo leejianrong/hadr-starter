@@ -21,6 +21,16 @@ class FakeGeo:
         return True
 
 
+class OffshoreGeo:
+    """USGS coarse-polygon reverse-geocode misses a coastal point → offshore."""
+
+    def iso3_for(self, lat, lon):
+        return []
+
+    def is_onshore(self, lat, lon):
+        return False
+
+
 def _ms(y, mo, d, h=0):
     return int(datetime(y, mo, d, h, tzinfo=timezone.utc).timestamp() * 1000)
 
@@ -82,6 +92,25 @@ def test_gdacs_eq_and_usgs_eq_merge_to_one_line():
 
     html = render(report)
     assert "not independent corroboration" in html
+
+
+def test_merged_eq_borrows_gdacs_country_when_usgs_offshore():
+    # USGS placed offshore (empty iso3 via FakeGeo? no — raw_feature has no geo here,
+    # so iso3 is empty → offshore). The merged GDACS side carries an ISO3.
+    usgs = raw_feed([raw_feature(eid="us7000off", ids=",us7000off,", mag=6.6,
+                                 mag_type="mww", time_ms=_ms(2026, 7, 8, 6),
+                                 lat=-6.3, lon=149.5, alert="orange",
+                                 place="120 km S of Kandrian")])
+    g = make_gdacs(eventtype="EQ", eventid=42, source="NEIC", source_id="us7000off",
+                   lat=-6.3, lon=149.5, iso3=("PNG",), peak_level="Orange",
+                   from_date=datetime(2026, 7, 8, 6, tzinfo=timezone.utc))
+    # build_report parses USGS with the real Geo (offshore for this coastal point).
+    report = build_report(usgs, "file://usgs", True, "", OffshoreGeo(), NOW, {},
+                          gdacs_events=[g], gdacs_feed=_feed(), gdacs_prior={})[0]
+    html = render(report)
+    assert "PNG" in html
+    assert "country via GDACS" in html
+    assert "(offshore)" not in html
 
 
 def test_low_confidence_eq_pair_is_cross_linked_not_merged():
