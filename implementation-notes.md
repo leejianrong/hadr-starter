@@ -151,13 +151,73 @@ quiet). The `claude-code-action` call runs in CI. Suite now 53 tests; ruff clean
 push/Slack channel is a future hook (needs a secret). **State across CI runs** uses
 `actions/cache`; if it's evicted, that day re-marks events NEW (acceptable).
 
+### 2026-07-09 — V4 built: GDACS multi-hazard + cross-feed join
+
+The multi-hazard (R4) and cross-feed (R3) machinery lands. New deterministic
+modules, all offline-tested against trimmed **real** GDACS samples captured
+2026-07-08 (`tests/fixtures/gdacs_rss_sample.xml`, `gdacs_eventlist_sample.json`):
+
+- `scripts/gdacs.py` — GDACS adapter, **RSS-first with the JSON list as a drop-in**
+  (ADR-0008). Handles every GDACS trap in `docs/feed-blindspots.md`: string
+  booleans (`"true"`/`"false"`), naive-UTC vs RFC-822 dates (two parsers in
+  `model.py`), `affectedcountries[]` as the ISO3 list (not the comma `country`
+  string), per-hazard heterogeneous severity units (M/km/h/ha), and the
+  JSON-vs-RSS `alertscore` non-interchangeability (see Deviations).
+- `scripts/cluster.py` — the confidence ladder from `SPIKE-cross-feed-confidence`.
+  **EQ identity link checked first** (`source == "NEIC"` + embedded `sourceid` in
+  the USGS `ids` set → `certain`); then GLIDE/tolerance box (tight→`high`,
+  loose→`medium`, partial→`low`). `join()` merges per A3-Q5: certain/high merge
+  silently, medium merges + "likely the same event", **low cross-links and never
+  merges**. Every EQ merge is `independent=False` — a GDACS-EQ is *built from*
+  USGS/NEIC, so it is one reading arriving twice, never corroboration and never
+  double-counted (ADR-0002, blindspot #2).
+- `model.py` grows `GdacsEvent` + a unified `ReportItem` (one resolved cross-feed
+  cluster — ADR-0001); `severity.py` grows the GDACS threshold (peak colour ≥
+  orange) and a cross-hazard `item_sort_key`; `state.py`/`changes.py` grow a
+  parallel GDACS state table + change detector keyed on `(eventtype, eventid)`.
+- `sitrep.py` gains `--gdacs` / `--gdacs-fixture` / `--gdacs-json-fixture`; the
+  renderer shows GDACS hazard lines, provenance, confidence/cross-link notes, and
+  a GDACS feed-health line with the 100-record rolling-cap warning.
+
+**DoD verified** (offline + a live two-run demo): cyclones/floods/wildfires appear
+ranked by GDACS alert colour; a GDACS-EQ and its USGS-EQ resolve to one line;
+green GDACS noise is filtered; low-confidence pairs are cross-linked, not merged;
+GDACS state persists so a second run is quiet. Suite now 83 tests; ruff clean.
+
 ## Open questions
 
 - ReliefWeb API `appname` approval is a manual, no-SLA process (Google Form +
   email since 1 Nov 2025). Request it now so the API path is unblocked later;
   build against RSS meanwhile (blindspot ReliefWeb notes). *Not yet requested.*
+- GDACS `--gdacs` is **opt-in** on the CLI for now; wiring it into the 08:30
+  workflow (`sitrep.yml`) is a follow-up (needs the RSS fetch step + cache key).
 
 ## Deviations
 
 <!-- Anything built that departs from the PRD or CLAUDE.md is recorded here,
      with the reason. An undocumented deviation is a bug. -->
+
+### 2026-07-09 — V4 (GDACS)
+
+- **Ranking is on the GDACS alert *colour*, not the raw numeric `alertscore`.**
+  The SLICES/DoD wording says "ranked by GDACS alertscore". We confirmed with live
+  data that the same event's raw `alertscore` differs between the JSON and RSS
+  feeds (EQ1550772: JSON peak score 1.0 vs RSS 0.0) — the "roughly swapped
+  conventions" blindspot. The `alertlevel` **colour** (Green/Orange/Red, which the
+  score buckets into) IS stable across both feeds, so it is the canonical severity
+  axis; the raw score is tagged with its `score_format` and only ever used as an
+  intra-format tiebreaker, never compared across feeds. This *is* ranking by
+  alertscore, just via its stable bucket rather than the unstable integer.
+- **GDACS sudden-onset hazards are windowed on currency (`iscurrent`), not onset
+  time.** The 24h-ending-08:30 window (ADR-0003) is defined on event onset. GDACS
+  cyclones/floods/wildfires run for days; a Red cyclone that began a week ago is
+  still the top of today's report while `iscurrent` holds. Windowing those out on
+  onset age would be the "infer 'ended' from age" error (ADR-0007 / GDACS
+  rolling-cap blindspot). Non-current GDACS alerts fall back to the 24h onset
+  window so stale records don't linger. Earthquakes (instantaneous) keep the strict
+  onset window unchanged.
+- **GDACS is opt-in on the CLI (`--gdacs`)**, so V1–V3 default behaviour and the
+  existing `sitrep.yml` are byte-unchanged until the workflow is updated. `Report`
+  gained an `items` list (the unified render surface); `build_report` kept its
+  positional signature (GDACS args are keyword-only with safe defaults) so the V1–V3
+  call sites and tests are untouched.

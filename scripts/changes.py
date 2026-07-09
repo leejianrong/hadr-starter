@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from .decluster import haversine_km
-from .model import ALERT_RANK, Cluster, Quake, Retraction
-from .state import StateRow
+from .model import ALERT_RANK, Cluster, GdacsEvent, Quake, Retraction
+from .state import GdacsStateRow, StateRow
 
 # --- tunable constants (ADR-0006) ---
 MAG_REVISION_M = 0.3        # magnitude move at/above this is a revision (mww-family scale)
@@ -27,6 +27,7 @@ class DetectResult:
     retractions: list[Retraction] = field(default_factory=list)
     next_rows: list[StateRow] = field(default_factory=list)
     is_loud: bool = False
+    gdacs: "GdacsDetectResult | None" = None  # the parallel GDACS pass (V4), when run
 
 
 def _compare(row: StateRow, q: Quake) -> list[str]:
@@ -127,3 +128,76 @@ def detect(prior: dict[str, StateRow], clusters: list[Cluster], feed_ok: bool,
 
     return DetectResult(clusters=clusters, retractions=retractions,
                         next_rows=next_rows, is_loud=loud)
+
+
+@dataclass
+class GdacsDetectResult:
+    changes: dict[str, tuple[str | None, str]] = field(default_factory=dict)  # key->(flag,reason)
+    retractions: list[Retraction] = field(default_factory=list)
+    next_rows: list[GdacsStateRow] = field(default_factory=list)
+    is_loud: bool = False
+
+
+def _gdacs_row_for(e: GdacsEvent, now: datetime) -> GdacsStateRow:
+    return GdacsStateRow(
+        key=e.key,
+        eventtype=e.eventtype,
+        eventid=e.eventid,
+        peak_level=e.peak_level,
+        episode_level=e.episode_level,
+        name=e.name,
+        iso3=e.iso3,
+        last_seen=now,
+        published=True,
+    )
+
+
+def detect_gdacs(prior: dict[str, GdacsStateRow], events: list[GdacsEvent],
+                 feed_ok: bool, now: datetime) -> GdacsDetectResult:
+    """Change detection for GDACS alerts, keyed on (eventtype, eventid) (ADR-0001).
+
+    Mirrors the USGS logic on the axis GDACS actually revises: the peak alert
+    **colour**. A colour move is a loud REVISED (escalations and — for orange+
+    events the reader was briefed on — de-escalations); a vanished published event
+    is a guarded retraction (never inferred from a feed outage — GDACS #cap)."""
+    changes: dict[str, tuple[str | None, str]] = {}
+    next_rows: list[GdacsStateRow] = []
+    loud = False
+
+    for e in events:
+        row = prior.get(e.key)
+        if row is None:
+            changes[e.key] = ("NEW", "")
+            loud = True
+        else:
+            old = ALERT_RANK.get((row.peak_level or "").lower(), 0)
+            new = ALERT_RANK.get((e.peak_level or "").lower(), 0)
+            if new > old:
+                changes[e.key] = ("REVISED", f"escalated {row.peak_level or 'none'}→{e.peak_level}")
+                loud = True
+            elif new < old and old >= ALERT_RANK["orange"]:
+                down = f"de-escalated {row.peak_level}→{e.peak_level or 'none'}"
+                changes[e.key] = ("REVISED", down)
+                loud = True
+            else:
+                changes[e.key] = (None, "")
+        next_rows.append(_gdacs_row_for(e, now))
+
+    retractions: list[Retraction] = []
+    if feed_ok:
+        seen = {e.key for e in events}
+        for key, row in prior.items():
+            if row.published and key not in seen:
+                retractions.append(
+                    Retraction(
+                        place=row.name or f"{row.eventtype}{row.eventid}",
+                        last_alert=(row.peak_level or None),
+                        last_mag=None,
+                        reason="GDACS alert no longer meets threshold (revised down or aged out)",
+                    )
+                )
+        if retractions:
+            loud = True
+
+    return GdacsDetectResult(changes=changes, retractions=retractions,
+                             next_rows=next_rows, is_loud=loud)

@@ -1,9 +1,9 @@
-"""Test factories — build Quakes and USGS payloads concisely."""
+"""Test factories — build Quakes, GDACS events, and USGS payloads concisely."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from scripts.model import Quake
+from scripts.model import GdacsEvent, Quake
 
 T0 = datetime(2026, 7, 8, 0, 0, tzinfo=timezone.utc)
 
@@ -43,6 +43,62 @@ def make_quake(
         title="",
         iso3=("XXX",) if onshore else (),
         onshore=onshore,
+    )
+
+
+def make_gdacs(
+    *,
+    eventtype="EQ",
+    eventid=1,
+    episodeid=1,
+    name="",
+    glide="",
+    source=None,
+    source_id="",
+    lat=0.0,
+    lon=0.0,
+    from_date=T0,
+    peak_level="Orange",
+    episode_level=None,
+    peak_score=2.0,
+    episode_score=2.0,
+    score_format="json",
+    is_current=True,
+    is_temporary=False,
+    iso3=("XXX",),
+    country="Somewhere",
+    severity_value=6.0,
+    severity_unit="M",
+    severity_text="Magnitude 6.0M",
+) -> GdacsEvent:
+    _src = source if source is not None else {
+        "EQ": "NEIC", "TC": "JTWC", "FL": "GLOFAS", "WF": "GWIS"}.get(eventtype, "")
+    return GdacsEvent(
+        eventtype=eventtype,
+        eventid=eventid,
+        episodeid=episodeid,
+        name=name or f"{eventtype} event",
+        glide=glide,
+        source=_src,
+        source_id=source_id,
+        lat=lat,
+        lon=lon,
+        from_date=from_date,
+        to_date=from_date,
+        date_modified=from_date,
+        peak_level=peak_level,
+        episode_level=episode_level if episode_level is not None else peak_level,
+        peak_score=peak_score,
+        episode_score=episode_score,
+        score_format=score_format,
+        is_current=is_current,
+        is_temporary=is_temporary,
+        iso3=iso3,
+        country=country,
+        severity_value=severity_value,
+        severity_unit=severity_unit,
+        severity_text=severity_text,
+        report_url="https://www.gdacs.org/report.aspx",
     )
 
 

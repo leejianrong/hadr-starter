@@ -7,13 +7,15 @@ flows left to right; each module is pure except `usgs.fetch` and the file write.
 
 | Module | Role |
 |--------|------|
-| `model.py` | Value objects (`Quake`, `Cluster`, `FeedHealth`, `Report`), SGT, `from_ms` |
-| `usgs.py` | Fetch (`requests`, lazy) + parse/normalize the GeoJSON feed |
+| `model.py` | Value objects (`Quake`, `Cluster`, `GdacsEvent`, `ReportItem`, `FeedHealth`, `Report`), SGT + the epoch-ms / naive-UTC / RFC-822 parsers |
+| `usgs.py` | Fetch (`requests`, lazy) + parse/normalize the USGS GeoJSON feed |
+| `gdacs.py` | GDACS multi-hazard adapter (V4) — **RSS-first**, JSON drop-in; handles every GDACS parsing trap |
 | `geo.py` | Offline reverse-geocode + onshore (ray-casting over vendored Natural Earth) |
 | `decluster.py` | Group a mainshock + aftershocks into one sequence; flag swarms |
-| `severity.py` | Impact-based attention threshold (ADR-0004), named constants |
-| `state.py` | SQLite persistence between runs (ADR-0007) — last-published per cluster |
-| `changes.py` | Six loud-change triggers vs prior state (ADR-0006); `feed_ok` guard |
+| `cluster.py` | Cross-feed join (V4) — confidence ladder, EQ identity link first (ADR-0001) |
+| `severity.py` | Impact-based attention threshold (ADR-0004) + GDACS colour threshold; named constants |
+| `state.py` | SQLite persistence between runs (ADR-0007) — last-published per cluster + GDACS event |
+| `changes.py` | Loud-change triggers vs prior state (ADR-0006); USGS + GDACS; `feed_ok` guard |
 | `render.py` | Deterministic four-section HTML + flags + heartbeat + `<!--NARRATIVE-->` slot |
 | `sitrep.py` | Orchestrator / CLI (state, `--brief` for the narrator, persists on good fetch) |
 | `inject.py` | Deterministically inject the model's prose into the narrative slot (escaped) |
@@ -27,11 +29,18 @@ decision to run.
 Run:
 
 ```
-uv run python -m scripts.sitrep                 # live USGS fetch → dashboard.html
-uv run python -m scripts.sitrep --fixture F     # offline, from a saved payload
-uv run pytest                                    # tests (offline, fixtures)
+uv run python -m scripts.sitrep                        # live USGS fetch → dashboard.html
+uv run python -m scripts.sitrep --gdacs                # + live GDACS (RSS) multi-hazard join
+uv run python -m scripts.sitrep --fixture F            # offline USGS, from a saved payload
+uv run python -m scripts.sitrep --fixture F \
+    --gdacs-fixture G.xml                              # offline USGS + GDACS RSS
+uv run python -m scripts.sitrep --fixture F \
+    --gdacs-json-fixture G.json                        # offline USGS + GDACS JSON (drop-in)
+uv run pytest                                           # tests (offline, fixtures)
 ```
 
 Constants to tune (all model-free): thresholds in `severity.py`
-(`MAG_SHOW_ANYWHERE`, `MAG_SHOW_ONSHORE`, `DEPTH_SHALLOW_KM`, `SIG_INCLUDE`) and
-declustering in `decluster.py` (`DECLUSTER_KM`, `SWARM_DOMINANCE_M`).
+(`MAG_SHOW_ANYWHERE`, `MAG_SHOW_ONSHORE`, `DEPTH_SHALLOW_KM`, `SIG_INCLUDE`,
+`GDACS_SHOW_RANK`), declustering in `decluster.py` (`DECLUSTER_KM`,
+`SWARM_DOMINANCE_M`), and the cross-feed tolerance box in `cluster.py`
+(`SPACE_*_KM`, `TIME_*_MIN`, `MAG_*_M`).

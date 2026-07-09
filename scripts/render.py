@@ -9,7 +9,12 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from .model import SGT, Cluster, FeedHealth, Quake, Report, Retraction
+from .model import SGT, Cluster, FeedHealth, GdacsEvent, Quake, Report, ReportItem, Retraction
+
+_HAZARD_LABEL = {
+    "EQ": "Earthquake", "TC": "Tropical cyclone", "FL": "Flood",
+    "WF": "Wildfire", "VO": "Volcano", "DR": "Drought", "TS": "Tsunami",
+}
 
 _ALERT_COLOURS = {
     "red": "#c0392b",
@@ -66,29 +71,91 @@ def _sequence(c: Cluster) -> str:
     return ""
 
 
-def _flag(c: Cluster) -> str:
-    if c.change == "NEW":
+def _flag(change: str | None, reason: str) -> str:
+    if change == "NEW":
         return '<span class="flag flag-new">NEW</span>'
-    if c.change == "REVISED":
-        title = f' title="{html.escape(c.change_reason)}"' if c.change_reason else ""
-        arrow = " ↑" if "escalated" in c.change_reason else ""
+    if change == "REVISED":
+        title = f' title="{html.escape(reason)}"' if reason else ""
+        arrow = " ↑" if "escalated" in reason else ""
         return f'<span class="flag flag-rev"{title}>REVISED{arrow}</span>'
     return ""
 
 
-def _event_line(c: Cluster, now: datetime) -> str:
+def _hazard(kind: str) -> str:
+    return _HAZARD_LABEL.get(kind, kind)
+
+
+def _gdacs_where(g: GdacsEvent) -> str:
+    if g.iso3:
+        return html.escape(f"{g.name or _hazard(g.eventtype)} [{', '.join(g.iso3)}]")
+    return html.escape(g.name or g.country or _hazard(g.eventtype))
+
+
+def _gdacs_severity(g: GdacsEvent) -> str:
+    """Per-hazard descriptor — value+unit, never compared across types (ADR-0002)."""
+    txt = g.severity_text or (
+        f"{g.severity_value:g} {g.severity_unit}".strip()
+        if g.severity_value is not None else ""
+    )
+    return html.escape(txt)
+
+
+def _provenance(item: ReportItem) -> str:
+    """Sources + the confidence/independence note (ADR-0001 / ADR-0002 / ADR-0008)."""
+    bits: list[str] = []
+    if item.sources:
+        bits.append("sources: " + html.escape(" + ".join(item.sources)))
+    # A merged earthquake is one NEIC reading arriving from two feeds — say so, so a
+    # reader never reads feed-agreement as corroboration (and it's never summed).
+    if item.eq is not None and item.gdacs is not None and not item.independent:
+        bits.append("same NEIC reading — not independent corroboration, not double-counted")
+    if item.confidence == "medium":
+        bits.append("likely the same event (medium confidence)")
+    lines = ""
+    if bits:
+        lines += f'<span class="prov">{" · ".join(bits)}</span>'
+    for note in item.cross_links:
+        lines += f'<span class="prov xlink">↔ {html.escape(note)}</span>'
+    return lines
+
+
+def _eq_line(item: ReportItem, now: datetime) -> str:
+    c = item.eq
     q = c.mainshock
+    # Severity is the max colour across the merged sources; show the loudest chip.
     reason = ""
-    if c.change_reason:
-        reason = f' <span class="muted">— {html.escape(c.change_reason)}</span>'
+    if item.change_reason:
+        reason = f' <span class="muted">— {html.escape(item.change_reason)}</span>'
     return (
         '<li class="event">'
-        f"{_flag(c)}{_chip(q.alert)}"
+        f"{_flag(item.change, item.change_reason)}{_chip(item.alert)}"
         f'<span class="what">{_where(q)}</span>'
         f'<span class="meta">{_mag(q)}{_sequence(c)} · depth {q.depth_km:.0f} km'
         f' · {_sgt(q.time)} ({_age(q.time, now)}){reason}</span>'
+        f"{_provenance(item)}"
         "</li>"
     )
+
+
+def _gdacs_line(item: ReportItem, now: datetime) -> str:
+    g = item.gdacs
+    when = f" · {_sgt(g.from_date)} ({_age(g.from_date, now)})" if g.from_date else ""
+    glide = f' · GLIDE {html.escape(g.glide)}' if g.glide else ""
+    reason = ""
+    if item.change_reason:
+        reason = f' <span class="muted">— {html.escape(item.change_reason)}</span>'
+    return (
+        '<li class="event">'
+        f"{_flag(item.change, item.change_reason)}{_chip(item.alert)}"
+        f'<span class="what">{_hazard(g.eventtype)}: {_gdacs_where(g)}</span>'
+        f'<span class="meta">{_gdacs_severity(g)}{when}{glide}{reason}</span>'
+        f"{_provenance(item)}"
+        "</li>"
+    )
+
+
+def _item_line(item: ReportItem, now: datetime) -> str:
+    return _eq_line(item, now) if item.eq is not None else _gdacs_line(item, now)
 
 
 def _retraction_line(r: Retraction) -> str:
@@ -114,25 +181,38 @@ def _feed_line(f: FeedHealth, now: datetime) -> str:
     )
 
 
+def _items(report: Report) -> list[ReportItem]:
+    """Render list. Falls back to wrapping bare EQ clusters so a Report built the
+    V1–V3 way (clusters only, no join) still renders."""
+    if report.items:
+        return report.items
+    return [
+        ReportItem(kind="EQ", eq=c, sources=["USGS"],
+                   change=c.change, change_reason=c.change_reason)
+        for c in report.clusters
+    ]
+
+
 def render(report: Report) -> str:
     now = report.publish_utc
     window = f"last 24h ending {_sgt(report.window_end_utc)}"
+    render_items = _items(report)
 
-    if report.clusters:
-        events = "\n".join(_event_line(c, now) for c in report.clusters)
+    if render_items:
+        events = "\n".join(_item_line(it, now) for it in render_items)
         sudden = f'<ul class="events">\n{events}\n</ul>'
     else:
         sudden = ('<p class="nothing">No new sudden-onset events crossed threshold '
                   f'in the {html.escape(window)}.</p>')
 
     if report.retractions:
-        items = "\n".join(_retraction_line(r) for r in report.retractions)
-        corrections = f'<ul class="events">\n{items}\n</ul>'
+        lines = "\n".join(_retraction_line(r) for r in report.retractions)
+        corrections = f'<ul class="events">\n{lines}\n</ul>'
     else:
         corrections = ""
 
     # Heartbeat line: quiet vs loud is visible, and the timestamp proves liveness.
-    n_changes = sum(1 for c in report.clusters if c.change) + len(report.retractions)
+    n_changes = sum(1 for it in render_items if it.change) + len(report.retractions)
     heartbeat = (f"{n_changes} update(s) since last run" if report.is_loud
                  else "no changes since last run")
 
@@ -174,6 +254,8 @@ def render(report: Report) -> str:
   .narrative p {{ margin: .3rem 0; }}
   .what {{ font-weight: 600; }}
   .meta {{ display: block; color: #7f8c8d; font-size: .85rem; margin-top: .15rem; }}
+  .prov {{ display: block; color: #95a5a6; font-size: .78rem; margin-top: .1rem; }}
+  .xlink {{ color: #8e44ad; }}
   .muted {{ color: #95a5a6; }}
   .nothing {{ color: #7f8c8d; font-style: italic; }}
   .ok {{ color: #27ae60; }} .down {{ color: #c0392b; font-weight: 700; }}
@@ -191,7 +273,8 @@ def render(report: Report) -> str:
 {corrections}
 
 <h2>Slow-onset / ongoing</h2>
-<p class="nothing">No slow-onset sources yet — GDACS and ReliefWeb arrive in later slices.</p>
+<p class="nothing">No always-on slow-onset section yet — curated crises (drought/epidemic/
+conflict) arrive with ReliefWeb in the next slice.</p>
 
 <h2>Feed health</h2>
 <ul class="feeds">
