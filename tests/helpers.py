@@ -3,9 +3,34 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from scripts.model import GdacsEvent, Quake
+from scripts.model import GdacsEvent, Quake, ReliefWebDisaster
 
 T0 = datetime(2026, 7, 8, 0, 0, tzinfo=timezone.utc)
+
+
+def make_reliefweb(
+    *,
+    title="Somewhere: Floods - Jul 2026",
+    url="https://reliefweb.int/disaster/fl-2026-000200-xxx",
+    glide="FL-2026-000200-XXX",
+    hazard_code=None,
+    iso3=None,
+    country_names=("Somewhere",),
+    pub_date=T0,
+    summary="Heavy rainfall caused flooding.",
+) -> ReliefWebDisaster:
+    code = hazard_code if hazard_code is not None else (glide[:2] if glide else "")
+    iso = iso3 if iso3 is not None else ((glide[-3:],) if glide else ())
+    return ReliefWebDisaster(
+        title=title,
+        url=url,
+        glide=glide,
+        hazard_code=code,
+        iso3=iso,
+        country_names=country_names,
+        pub_date=pub_date,
+        summary=summary,
+    )
 
 
 def make_quake(

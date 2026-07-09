@@ -10,9 +10,10 @@ flows left to right; each module is pure except `usgs.fetch` and the file write.
 | `model.py` | Value objects (`Quake`, `Cluster`, `GdacsEvent`, `ReportItem`, `FeedHealth`, `Report`), SGT + the epoch-ms / naive-UTC / RFC-822 parsers |
 | `usgs.py` | Fetch (`requests`, lazy) + parse/normalize the USGS GeoJSON feed |
 | `gdacs.py` | GDACS multi-hazard adapter (V4) — **RSS-first**, JSON drop-in; handles every GDACS parsing trap |
+| `reliefweb.py` | ReliefWeb curated-disaster adapter (V5) — **RSS-first**, browser-UA; GLIDE/ISO3/hazard from the description |
 | `geo.py` | Offline reverse-geocode + onshore (ray-casting over vendored Natural Earth) |
 | `decluster.py` | Group a mainshock + aftershocks into one sequence; flag swarms |
-| `cluster.py` | Cross-feed join (V4) — confidence ladder, EQ identity link first (ADR-0001) |
+| `cluster.py` | Cross-feed join (V4/V5) — confidence ladder + EQ identity link, ReliefWeb GLIDE stacking (ADR-0001) |
 | `severity.py` | Impact-based attention threshold (ADR-0004) + GDACS colour threshold; named constants |
 | `state.py` | SQLite persistence between runs (ADR-0007) — last-published per cluster + GDACS event |
 | `changes.py` | Loud-change triggers vs prior state (ADR-0006); USGS + GDACS; `feed_ok` guard |
@@ -36,6 +37,10 @@ uv run python -m scripts.sitrep --fixture F \
     --gdacs-fixture G.xml                              # offline USGS + GDACS RSS
 uv run python -m scripts.sitrep --fixture F \
     --gdacs-json-fixture G.json                        # offline USGS + GDACS JSON (drop-in)
+uv run python -m scripts.sitrep --all-feeds             # live USGS + GDACS + ReliefWeb
+uv run python -m scripts.sitrep --fixture F \
+    --gdacs-json-fixture G.json \
+    --reliefweb-fixture R.xml                          # offline all three feeds
 uv run pytest                                           # tests (offline, fixtures)
 ```
 

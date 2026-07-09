@@ -22,7 +22,7 @@ Pure and deterministic (CLAUDE.md #1); constants named at module top.
 from __future__ import annotations
 
 from .decluster import haversine_km
-from .model import Cluster, GdacsEvent, Quake, ReportItem
+from .model import Cluster, GdacsEvent, Quake, ReliefWebDisaster, ReportItem
 from .severity import is_mww_family
 
 # --- tolerance box constants (SPIKE-cross-feed-confidence A3-Q3) ---
@@ -141,3 +141,35 @@ def join(clusters: list[Cluster], gdacs_events: list[GdacsEvent]) -> list[Report
         items.append(item)
 
     return items
+
+
+def attach_reliefweb(items: list[ReportItem], disasters: list[ReliefWebDisaster]
+                     ) -> list[ReportItem]:
+    """Fold ReliefWeb disasters into the resolved clusters, returning the *ongoing*
+    (slow-onset/curated) items — the ones not tied to a sudden-onset line.
+
+    ReliefWeb's join key is **GLIDE** — its actual strength (ADR-0001). A disaster
+    whose GLIDE equals a sudden-onset item's GDACS GLIDE stacks onto that line as an
+    attributed source (provenance stacking on U2.1). Unlike the EQ↔NEIC link, GDACS
+    and ReliefWeb are genuinely independent organisations, so this **does** corroborate
+    (`independent` stays True) — but figures are still shown stacked, never summed
+    (ADR-0008). Everything else becomes a window-exempt ongoing item; every ReliefWeb
+    disaster appears somewhere (the "reached ReliefWeb" floor — ADR-0004 branch 3)."""
+    ongoing: list[ReportItem] = []
+    for d in disasters:
+        stacked = False
+        if d.glide:
+            for it in items:
+                if (it.reliefweb is None and it.gdacs is not None
+                        and it.gdacs.glide and it.gdacs.glide == d.glide):
+                    it.reliefweb = d
+                    if "ReliefWeb" not in it.sources:
+                        it.sources.append("ReliefWeb")
+                    it.confidence = it.confidence or "certain"  # exact GLIDE match
+                    stacked = True
+                    break
+        if not stacked:
+            ongoing.append(
+                ReportItem(kind=d.hazard_code or "OT", reliefweb=d, sources=["ReliefWeb"])
+            )
+    return ongoing

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from scripts.cluster import confidence, eq_identity_link, join
+from scripts.cluster import attach_reliefweb, confidence, eq_identity_link, join
 from scripts.decluster import decluster
-from tests.helpers import T0, make_gdacs, make_quake
+from tests.helpers import T0, make_gdacs, make_quake, make_reliefweb
 
 
 def _cluster(**kw):
@@ -103,3 +103,36 @@ def test_join_non_eq_hazards_stand_alone():
     assert len(items) == 1
     assert items[0].kind == "TC" and items[0].eq is None
     assert items[0].sources == ["GDACS·JTWC"]
+
+
+# --- ReliefWeb: GLIDE stacking vs ongoing (V5) ---
+
+def test_reliefweb_stacks_onto_matching_glide():
+    tc = make_gdacs(eventtype="TC", eventid=1, glide="TC-2026-000099-GUM",
+                    name="Cyclone Bavi", peak_level="Red")
+    items = join([], [tc])
+    disaster = make_reliefweb(glide="TC-2026-000099-GUM", title="Guam: Cyclone Bavi")
+    ongoing = attach_reliefweb(items, [disaster])
+
+    assert ongoing == []                       # stacked, not a separate ongoing line
+    assert items[0].reliefweb is disaster
+    assert "ReliefWeb" in items[0].sources
+    assert items[0].independent is True         # GDACS & ReliefWeb are independent orgs
+
+
+def test_reliefweb_without_match_becomes_ongoing():
+    disaster = make_reliefweb(glide="EP-2026-000107-CAF", hazard_code="EP",
+                              title="CAR: Cholera Outbreak")
+    ongoing = attach_reliefweb([], [disaster])
+    assert len(ongoing) == 1
+    assert ongoing[0].kind == "EP" and ongoing[0].reliefweb is disaster
+    assert ongoing[0].sources == ["ReliefWeb"]
+
+
+def test_reliefweb_no_glide_never_stacks():
+    tc = make_gdacs(eventtype="TC", eventid=1, glide="TC-2026-000099-GUM", peak_level="Red")
+    items = join([], [tc])
+    disaster = make_reliefweb(glide="", hazard_code="FL", title="Some flood")
+    ongoing = attach_reliefweb(items, [disaster])
+    assert len(ongoing) == 1                    # no GLIDE → cannot stack
+    assert items[0].reliefweb is None

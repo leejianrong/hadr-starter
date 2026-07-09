@@ -17,11 +17,17 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import changes, cluster, gdacs, render, severity, usgs
+from . import changes, cluster, gdacs, reliefweb, render, severity, usgs
 from . import decluster as dc
 from .geo import Geo
-from .model import FeedHealth, GdacsEvent, Report, ReportItem, from_ms
-from .state import DEFAULT_PATH, GdacsStateRow, StateRow, StateStore
+from .model import FeedHealth, GdacsEvent, ReliefWebDisaster, Report, ReportItem, from_ms
+from .state import (
+    DEFAULT_PATH,
+    GdacsStateRow,
+    ReliefWebStateRow,
+    StateRow,
+    StateStore,
+)
 
 WINDOW_HOURS = 24
 COVERAGE_USGS_ONLY = (
@@ -33,6 +39,12 @@ COVERAGE_MULTIHAZARD = (
     "volcano). No epidemic/conflict monitoring yet (ReliefWeb arrives next). "
     "Onshore is approximated as inside a country polygon."
 )
+COVERAGE_FULL = (
+    "Coverage: earthquakes (USGS) + GDACS multi-hazard + ReliefWeb curated "
+    "disasters (incl. epidemics & conflict). ReliefWeb is in RSS mode — see "
+    "feed-health for what the API would add. Onshore is approximated as inside a "
+    "country polygon."
+)
 log = logging.getLogger("sitrep")
 
 
@@ -42,13 +54,17 @@ def build_report(
     gdacs_events: list[GdacsEvent] | None = None,
     gdacs_feed: FeedHealth | None = None,
     gdacs_prior: dict[str, GdacsStateRow] | None = None,
+    reliefweb_disasters: list[ReliefWebDisaster] | None = None,
+    reliefweb_feed: FeedHealth | None = None,
+    reliefweb_prior: dict[str, ReliefWebStateRow] | None = None,
 ) -> tuple[Report, changes.DetectResult]:
     """Pure pipeline over already-fetched payloads — the testable core.
 
-    USGS is passed as raw JSON; GDACS is passed as *parsed* events (the RSS-first /
-    JSON drop-in boundary lives in `gdacs.py`, so this stays format-agnostic).
-    Returns the Report and the USGS DetectResult; the GDACS pass (when run) hangs
-    off `result.gdacs` so V1–V3's 2-tuple unpacking is unchanged.
+    USGS is passed as raw JSON; GDACS and ReliefWeb are passed as *parsed* records
+    (the RSS-first / API drop-in boundary lives in each adapter, so this stays
+    format-agnostic). Returns the Report and the USGS DetectResult; the GDACS and
+    ReliefWeb passes (when run) hang off `result.gdacs` / `result.reliefweb` so
+    V1–V3's 2-tuple unpacking is unchanged.
     """
     window_start = now_utc - timedelta(hours=WINDOW_HOURS)
     quakes = usgs.parse(raw, geo=geo)
@@ -98,7 +114,28 @@ def build_report(
     _annotate_changes(items, gdacs_result)
     items.sort(key=severity.item_sort_key, reverse=True)
 
+    # --- ReliefWeb curated disasters + slow-onset/ongoing section (V5) ---
+    ongoing: list[ReportItem] = []
+    reliefweb_result: changes.ReliefWebDetectResult | None = None
+    if reliefweb_feed is not None:
+        coverage = COVERAGE_FULL
+        feeds.append(reliefweb_feed)
+        disasters = reliefweb_disasters or []
+        # Every curated disaster clears the bar (the "reached ReliefWeb" floor,
+        # ADR-0004 branch 3) and is window-exempt — slow-onset has no onset instant.
+        reliefweb_result = changes.detect_reliefweb(reliefweb_prior or {}, disasters,
+                                                    now=now_utc)
+        is_loud = is_loud or reliefweb_result.is_loud
+        # GLIDE-stack onto sudden-onset lines; the rest become ongoing items.
+        ongoing = cluster.attach_reliefweb(items, disasters)
+        rchanges = reliefweb_result.changes
+        for it in ongoing:
+            if it.reliefweb is not None:
+                it.change, it.change_reason = rchanges.get(it.reliefweb.key, (None, ""))
+        ongoing.sort(key=severity.ongoing_sort_key, reverse=True)
+
     result.gdacs = gdacs_result
+    result.reliefweb = reliefweb_result
     report = Report(
         publish_utc=now_utc,
         window_start_utc=window_start,
@@ -107,6 +144,7 @@ def build_report(
         feeds=feeds,
         coverage_note=coverage,
         items=items,
+        ongoing=ongoing,
         retractions=retractions,
         is_loud=is_loud,
     )
@@ -129,11 +167,21 @@ def _annotate_changes(items: list[ReportItem],
             it.change, it.change_reason = gchanges.get(it.gdacs.key, (None, ""))
 
 
+def _iso3_for(it: ReportItem) -> list[str]:
+    if it.eq is not None:
+        return list(it.eq.mainshock.iso3)
+    if it.gdacs is not None:
+        return list(it.gdacs.iso3)
+    if it.reliefweb is not None:
+        return list(it.reliefweb.iso3)
+    return []
+
+
 def _brief_change(it: ReportItem) -> dict:
     """One loud item as facts for the narrator — no numbers it can't see (ADR-0002)."""
     entry: dict = {
         "kind": it.kind,
-        "iso3": list(it.eq.mainshock.iso3 if it.eq else (it.gdacs.iso3 if it.gdacs else ())),
+        "iso3": _iso3_for(it),
         "alert": it.alert,
         "change": it.change,
         "reason": it.change_reason,
@@ -160,6 +208,15 @@ def _brief_change(it: ReportItem) -> dict:
             severity=g.severity_text,   # per-hazard text, never a summed figure
             gdacs_source=g.source,
         )
+    if it.reliefweb is not None:
+        d = it.reliefweb
+        entry.update(
+            place=entry.get("place") or d.title,
+            reliefweb_title=d.title,
+            glide=d.glide,
+            # The prose summary is context, NOT a source of figures to restate.
+            reliefweb_summary=d.summary,
+        )
     return entry
 
 
@@ -173,7 +230,8 @@ def build_brief(report: Report) -> dict:
         "loud": report.is_loud,
         "publish_utc": report.publish_utc.isoformat(),
         "coverage": report.coverage_note,
-        "changes": [_brief_change(it) for it in report.items if it.change],
+        "changes": [_brief_change(it)
+                    for it in (report.items + report.ongoing) if it.change],
         "retractions": [
             {"place": r.place, "last_alert": r.last_alert, "last_mag": r.last_mag,
              "reason": r.reason}
@@ -233,8 +291,41 @@ def _load_gdacs(args, geo: Geo, now: datetime
                               as_of=None, note=f"fetch failed: {exc}")
 
 
+def _load_reliefweb(args, geo: Geo, now: datetime
+                    ) -> tuple[list[ReliefWebDisaster], FeedHealth] | tuple[None, None]:
+    """Load ReliefWeb (RSS-first, API drop-in). Returns (disasters, feed-health), or
+    (None, None) when not requested. Degrades loud on failure."""
+    if not (args.reliefweb or args.reliefweb_fixture):
+        return None, None
+
+    # The RSS-mode gaps, stated loud on the page (ADR-0008): no status/type/full
+    # ISO3/date.event, and only the latest ~20 items (a burst can be dropped).
+    rss_note = ("RSS mode, no API — status (alert/current/past), structured "
+                "multi-country ISO3, date.event, and pagination (latest ~20 only) "
+                "unavailable; request the appname to upgrade")
+    try:
+        if args.reliefweb_fixture:
+            xml = Path(args.reliefweb_fixture).read_text()
+            disasters = reliefweb.parse_rss(xml, geo=geo)
+            url = f"file://{Path(args.reliefweb_fixture).resolve()}"
+            note = f"offline RSS fixture ({reliefweb.item_count(xml)} items) — {rss_note}"
+            return disasters, FeedHealth(name="ReliefWeb", url=url, ok=True,
+                                         as_of=now, note=note)
+        xml, final_url = reliefweb.fetch_rss()
+        log.info("fetched ReliefWeb RSS feed: %s", final_url)  # final url (CLAUDE.md #2)
+        disasters = reliefweb.parse_rss(xml, geo=geo)
+        note = f"{reliefweb.item_count(xml)} items — {rss_note}"
+        return disasters, FeedHealth(name="ReliefWeb", url=final_url, ok=True,
+                                     as_of=now, note=note)
+    except Exception as exc:  # degrade loud, never crash the sitrep
+        log.error("ReliefWeb fetch failed: %s", exc)
+        return [], FeedHealth(name="ReliefWeb", url=reliefweb.FEED_URL_RSS, ok=False,
+                              as_of=None, note=f"fetch failed: {exc}")
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="HADR morning sitrep (USGS + GDACS)")
+    parser = argparse.ArgumentParser(
+        description="HADR morning sitrep (USGS + GDACS + ReliefWeb)")
     parser.add_argument("--fixture", help="read a saved USGS payload instead of fetching")
     parser.add_argument("--out", default="dashboard.html", help="output HTML path")
     parser.add_argument("--state", default=DEFAULT_PATH, help="state DB path")
@@ -244,7 +335,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="also fetch GDACS live (RSS-first multi-hazard join)")
     parser.add_argument("--gdacs-fixture", help="read a saved GDACS RSS payload")
     parser.add_argument("--gdacs-json-fixture", help="read a saved GDACS JSON payload")
+    parser.add_argument("--reliefweb", action="store_true",
+                        help="also fetch ReliefWeb live (RSS-first curated disasters)")
+    parser.add_argument("--reliefweb-fixture", help="read a saved ReliefWeb RSS payload")
+    parser.add_argument("--all-feeds", action="store_true",
+                        help="shorthand for --gdacs --reliefweb (live)")
     args = parser.parse_args(argv)
+    if args.all_feeds:
+        args.gdacs = args.reliefweb = True
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     now = (datetime.fromisoformat(args.now).replace(tzinfo=timezone.utc)
@@ -257,10 +355,14 @@ def main(argv: list[str] | None = None) -> int:
     raw, final_url, feed_ok, note = _load(args)
     gdacs_events, gdacs_feed = _load_gdacs(args, geo, now)
     gdacs_prior = store.load_gdacs() if gdacs_feed is not None else None
+    reliefweb_disasters, reliefweb_feed = _load_reliefweb(args, geo, now)
+    reliefweb_prior = store.load_reliefweb() if reliefweb_feed is not None else None
 
     report, result = build_report(
         raw, final_url, feed_ok, note, geo, now, prior,
         gdacs_events=gdacs_events, gdacs_feed=gdacs_feed, gdacs_prior=gdacs_prior,
+        reliefweb_disasters=reliefweb_disasters, reliefweb_feed=reliefweb_feed,
+        reliefweb_prior=reliefweb_prior,
     )
 
     Path(args.out).write_text(render.render(report))
@@ -273,12 +375,16 @@ def main(argv: list[str] | None = None) -> int:
         store.replace(result.next_rows)
     if gdacs_feed is not None and gdacs_feed.ok and result.gdacs is not None:
         store.replace_gdacs(result.gdacs.next_rows)
+    if reliefweb_feed is not None and reliefweb_feed.ok and result.reliefweb is not None:
+        store.replace_reliefweb(result.reliefweb.next_rows)
     store.close()
 
     verdict = "LOUD" if report.is_loud else "quiet"
-    log.info("wrote %s — %d line(s), %d retraction(s), %s, usgs_ok=%s, gdacs=%s",
-             args.out, len(report.items), len(report.retractions), verdict, feed_ok,
-             "off" if gdacs_feed is None else f"ok={gdacs_feed.ok}")
+    log.info("wrote %s — %d sudden + %d ongoing, %d retraction(s), %s, usgs_ok=%s, "
+             "gdacs=%s, reliefweb=%s",
+             args.out, len(report.items), len(report.ongoing), len(report.retractions),
+             verdict, feed_ok, "off" if gdacs_feed is None else f"ok={gdacs_feed.ok}",
+             "off" if reliefweb_feed is None else f"ok={reliefweb_feed.ok}")
     return 0
 
 

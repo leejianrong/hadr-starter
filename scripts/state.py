@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS gdacs_events (
     last_seen    TEXT NOT NULL,    -- ISO-8601 UTC
     published    INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reliefweb_disasters (
+    key          TEXT PRIMARY KEY, -- GLIDE (else disaster URL) — ADR-0001 ReliefWeb key
+    glide        TEXT,
+    url          TEXT,
+    title        TEXT,
+    hazard_code  TEXT,
+    iso3         TEXT,             -- space-joined ISO3 list
+    last_seen    TEXT NOT NULL     -- ISO-8601 UTC
+);
 """
 
 
@@ -68,6 +77,17 @@ class GdacsStateRow:
     iso3: tuple[str, ...]
     last_seen: datetime
     published: bool
+
+
+@dataclass
+class ReliefWebStateRow:
+    key: str
+    glide: str
+    url: str
+    title: str
+    hazard_code: str
+    iso3: tuple[str, ...]
+    last_seen: datetime
 
 
 class StateStore:
@@ -163,6 +183,37 @@ class StateStore:
                         _iso(row.last_seen),
                         int(row.published),
                     )
+                    for row in rows
+                ],
+            )
+
+    def load_reliefweb(self) -> dict[str, ReliefWebStateRow]:
+        rows = self._conn.execute(
+            "SELECT key, glide, url, title, hazard_code, iso3, last_seen "
+            "FROM reliefweb_disasters"
+        ).fetchall()
+        out: dict[str, ReliefWebStateRow] = {}
+        for r in rows:
+            out[r[0]] = ReliefWebStateRow(
+                key=r[0],
+                glide=r[1] or "",
+                url=r[2] or "",
+                title=r[3] or "",
+                hazard_code=r[4] or "",
+                iso3=tuple(s for s in (r[5] or "").split(" ") if s),
+                last_seen=datetime.fromisoformat(r[6]),
+            )
+        return out
+
+    def replace_reliefweb(self, rows: list[ReliefWebStateRow]) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM reliefweb_disasters")
+            self._conn.executemany(
+                "INSERT INTO reliefweb_disasters (key, glide, url, title, hazard_code, "
+                "iso3, last_seen) VALUES (?,?,?,?,?,?,?)",
+                [
+                    (row.key, row.glide, row.url, row.title, row.hazard_code,
+                     " ".join(row.iso3), _iso(row.last_seen))
                     for row in rows
                 ],
             )

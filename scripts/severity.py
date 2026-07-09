@@ -82,3 +82,13 @@ def item_sort_key(item: ReportItem):
     if item.gdacs is not None:
         return (rank, item.gdacs.peak_score, 0.0)
     return (rank, 0.0, 0.0)
+
+
+def ongoing_sort_key(item: ReportItem) -> float:
+    """Order the slow-onset/curated section by most-recently-curated first.
+    ReliefWeb carries no alert colour (severity there is 'a human made a page'),
+    so recency of curation is the honest ordering — not a fabricated severity."""
+    d = item.reliefweb
+    if d is not None and d.pub_date is not None:
+        return d.pub_date.timestamp()
+    return 0.0
