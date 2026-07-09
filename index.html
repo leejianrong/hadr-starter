@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HADR Monitor — the humanitarian disaster watch desk</title>
-<meta name="description" content="A deterministic morning situation report: USGS, GDACS and ReliefWeb read every day at 08:30 SGT and distilled to one page, ranked by human impact — never by headline noise.">
+<title>HADR Monitor: a daily disaster report</title>
+<meta name="description" content="A daily report of the world's disasters. Three global feeds read every morning at 08:30 SGT and shown on one page, with the highest human impact first.">
 <style>
   :root {
     --ink:    #0b0f14;
@@ -21,7 +21,6 @@
     --signal: #79b8d1;
     --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --rail: 88px;
     --maxw: 1080px;
   }
 
@@ -37,7 +36,6 @@
     font-size: 16px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
-    /* faint console grid — atmosphere, not decoration */
     background-image:
       linear-gradient(var(--ink-2) 1px, transparent 1px),
       linear-gradient(90deg, var(--ink-2) 1px, transparent 1px);
@@ -57,11 +55,6 @@
   :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 2px; }
 
   .mono { font-family: var(--font-mono); }
-  .eyebrow {
-    font-family: var(--font-mono); font-size: .72rem; font-weight: 600;
-    letter-spacing: .22em; text-transform: uppercase; color: var(--muted);
-    margin: 0 0 1.1rem;
-  }
 
   /* ---------- ops top bar ---------- */
   .ops-bar {
@@ -93,44 +86,8 @@
   .ops-bar nav a:hover { color: var(--paper); text-decoration: none; }
   @media (max-width: 720px) { .ops-bar nav { display: none; } }
 
-  /* ---------- severity rail (the signature) ---------- */
-  .rail {
-    position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail);
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 0; z-index: 5;
-    border-right: 1px solid var(--line);
-    background: linear-gradient(180deg, transparent, rgba(224,75,58,.03) 12%, rgba(240,135,46,.03) 50%, rgba(53,196,107,.03) 88%, transparent);
-  }
-  .rail .cap {
-    font-family: var(--font-mono); font-size: .58rem; letter-spacing: .18em;
-    color: var(--faint); writing-mode: vertical-rl; text-transform: uppercase;
-    margin: .4rem 0;
-  }
-  .rail .ladder { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 0; }
-  .rung { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 1.4rem 0; position: relative; }
-  .rung::after {
-    content: ""; position: absolute; top: 100%; left: 50%; width: 1px; height: 1.4rem;
-    background: var(--line-2); transform: translateX(-50%);
-  }
-  .rung:last-child::after { display: none; }
-  .rung .node {
-    width: 15px; height: 15px; border-radius: 50%; background: var(--c);
-    box-shadow: 0 0 14px 1px var(--c); opacity: .25;
-    animation: boot .5s ease forwards; animation-delay: var(--d);
-  }
-  .rung .lbl {
-    writing-mode: vertical-rl; font-family: var(--font-mono); font-size: .6rem;
-    letter-spacing: .16em; color: var(--muted); text-transform: uppercase;
-  }
-  @keyframes boot { to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .rung .node { animation: none; opacity: 1; } }
-  @media (max-width: 900px) { .rail { display: none; } }
-
   /* ---------- layout ---------- */
   .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(1.2rem, 4vw, 2.4rem); }
-  main { padding-left: var(--rail); }
-  @media (max-width: 900px) { main { padding-left: 0; } }
-
   section { padding: clamp(3rem, 7vw, 5.5rem) 0; border-top: 1px solid var(--line); }
   .hero { border-top: 0; }
 
@@ -138,13 +95,14 @@
   .hero { padding-top: clamp(3.5rem, 9vw, 7rem); }
   .hero h1 {
     font-family: var(--font-mono); font-weight: 700;
-    font-size: clamp(2.1rem, 6.2vw, 4.3rem); line-height: 1.02;
-    letter-spacing: -.02em; margin: 0 0 1.4rem; max-width: 16ch;
+    font-size: clamp(2.1rem, 6vw, 4rem); line-height: 1.05;
+    letter-spacing: -.02em; margin: 0 0 1.4rem; max-width: 18ch;
+    text-wrap: balance;
     animation: rise .7s cubic-bezier(.2,.7,.2,1) both;
   }
   .hero h1 .accent { color: var(--signal); }
   .hero .lead {
-    font-size: clamp(1.05rem, 2.3vw, 1.32rem); color: var(--muted); max-width: 60ch;
+    font-size: clamp(1.05rem, 2.3vw, 1.3rem); color: var(--muted); max-width: 58ch;
     margin: 0 0 2.2rem; animation: rise .7s .08s cubic-bezier(.2,.7,.2,1) both;
   }
   .hero .lead b { color: var(--paper); font-weight: 600; }
@@ -170,11 +128,11 @@
   /* ---------- generic section head ---------- */
   h2 {
     font-family: var(--font-mono); font-weight: 700; font-size: clamp(1.4rem, 3vw, 2rem);
-    letter-spacing: -.01em; margin: 0 0 .6rem; line-height: 1.15;
+    letter-spacing: -.01em; margin: 0 0 .7rem; line-height: 1.15; text-wrap: balance;
   }
   .section-lead { color: var(--muted); max-width: 62ch; margin: 0 0 2.4rem; font-size: 1.05rem; }
 
-  /* ---------- what you get ---------- */
+  /* ---------- two-section explainer ---------- */
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
   @media (max-width: 720px) { .split { grid-template-columns: 1fr; } }
   .card {
@@ -182,7 +140,7 @@
     padding: 1.5rem 1.6rem; position: relative; overflow: hidden;
   }
   .card .tag {
-    font-family: var(--font-mono); font-size: .66rem; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: .66rem; letter-spacing: .12em;
     text-transform: uppercase; color: var(--muted); display: block; margin-bottom: .7rem;
   }
   .card h3 { font-size: 1.16rem; margin: 0 0 .55rem; font-weight: 650; }
@@ -193,7 +151,7 @@
   .card.window::before { background: var(--orange); }
   .card.exempt::before { background: var(--signal); }
 
-  /* ---------- rules of the desk ---------- */
+  /* ---------- rules ---------- */
   .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem 2.4rem; }
   @media (max-width: 720px) { .rules { grid-template-columns: 1fr; } }
   .rule { display: flex; gap: 1rem; align-items: flex-start; }
@@ -235,7 +193,7 @@
   /* ---------- limits ---------- */
   .limits { list-style: none; padding: 0; margin: 0; max-width: 72ch; }
   .limits li { padding: .7rem 0 .7rem 1.6rem; border-bottom: 1px solid var(--line); position: relative; color: var(--muted); }
-  .limits li::before { content: "—"; position: absolute; left: 0; color: var(--faint); font-family: var(--font-mono); }
+  .limits li::before { content: "\2013"; position: absolute; left: 0; color: var(--faint); font-family: var(--font-mono); }
   .limits li b { color: var(--paper); font-weight: 600; }
 
   /* ---------- final cta ---------- */
@@ -253,22 +211,12 @@
 <body>
 <a class="skip" href="#report">Skip to the report</a>
 
-<aside class="rail" aria-hidden="true">
-  <span class="cap">ranked by</span>
-  <div class="ladder">
-    <div class="rung" style="--c:var(--red)"><span class="node" style="--d:.15s"></span><span class="lbl">Red</span></div>
-    <div class="rung" style="--c:var(--orange)"><span class="node" style="--d:.35s"></span><span class="lbl">Orange</span></div>
-    <div class="rung" style="--c:var(--green)"><span class="node" style="--d:.55s"></span><span class="lbl">Green</span></div>
-  </div>
-  <span class="cap">human impact</span>
-</aside>
-
 <header class="ops-bar">
   <span class="brand">HADR<b>·</b>MON</span>
-  <span class="status"><span class="dot"></span> REGENERATED DAILY · 08:30 SGT</span>
+  <span class="status"><span class="dot"></span> UPDATED DAILY, 08:30 SGT</span>
   <nav>
     <a href="#what">What you get</a>
-    <a href="#rules">The rules</a>
+    <a href="#trust">Trust</a>
     <a href="#feeds">Feeds</a>
     <a href="#report">Report</a>
   </nav>
@@ -278,152 +226,141 @@
 <div class="wrap">
 
   <section class="hero">
-    <p class="eyebrow">Humanitarian disaster watch · daily situation report</p>
-    <h1>The disaster desk that doesn't <span class="accent">cry wolf</span>.</h1>
-    <p class="lead">Three global feeds, read every morning and distilled to one page: the
-      humanitarian situations that actually crossed the line for attention — <b>ranked by
-      human impact</b>, not by how loud the headline is.</p>
+    <h1>The world's disasters, ranked by <span class="accent">human impact</span>.</h1>
+    <p class="lead">Every morning at 08:30 Singapore time, HADR Monitor reads three global feeds
+      and shows the disasters that need attention, with the <b>highest human impact first</b>.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">→</span></a>
-      <a class="btn btn-ghost" href="#method">How it works</a>
+      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">&rarr;</span></a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
     </div>
   </section>
 
   <section id="what">
-    <p class="eyebrow">What you get</p>
-    <h2>One page, two clocks.</h2>
-    <p class="section-lead">Fast events and slow crises don't share a timescale, so the report
-      keeps them in separate sections — and never forces a famine into a 24-hour box.</p>
+    <h2>One page, two sections.</h2>
+    <p class="section-lead">Fast events and slow crises run on different clocks, so the report
+      keeps them apart.</p>
     <div class="split">
       <div class="card window">
-        <span class="tag">Sudden-onset · last 24 h</span>
-        <h3>What just happened</h3>
-        <p>Earthquakes, cyclones, floods and wildfires that crossed the impact threshold in the
-          window ending 08:30 SGT. A mainshock and its aftershocks collapse to one line; a quake
-          reported by two feeds is resolved to one — never counted twice.</p>
+        <span class="tag">Sudden onset, last 24 hours</span>
+        <h3>Sudden events</h3>
+        <p>Earthquakes, cyclones, floods, and wildfires from the 24 hours before 08:30.
+          Aftershocks are grouped under their main quake. An event reported by two feeds shows
+          once, not twice.</p>
       </div>
       <div class="card exempt">
-        <span class="tag">Slow-onset · always on</span>
-        <h3>What's still unfolding</h3>
-        <p>Droughts, epidemics and conflict have no single moment. They stay in view for as long
-          as they're a live humanitarian situation — window-exempt, because a cholera outbreak
-          doesn't start at a timestamp.</p>
+        <span class="tag">Slow onset, always shown</span>
+        <h3>Ongoing crises</h3>
+        <p>Droughts, epidemics, and conflict have no single start time. They stay on the page
+          for as long as they are active, with no 24-hour cutoff.</p>
       </div>
     </div>
   </section>
 
-  <section id="rules">
-    <p class="eyebrow">The rules of the desk</p>
+  <section id="trust">
     <h2>Why you can trust the numbers.</h2>
-    <p class="section-lead">Four commitments the pipeline enforces in code — not in good intentions.</p>
+    <p class="section-lead">Four rules, enforced in code.</p>
     <div class="rules">
       <div class="rule">
         <span class="mark" style="--m:var(--red)"></span>
         <div>
-          <h3>Severity is impact, not magnitude.</h3>
-          <p>We rank on the colour PAGER and GDACS already computed from population exposure and
-            vulnerability. We never estimate casualties ourselves.</p>
+          <h3>Severity means impact, not size.</h3>
+          <p>We use the alert level that USGS and GDACS already calculate from population and
+            vulnerability. We do not estimate casualties ourselves.</p>
         </div>
       </div>
       <div class="rule">
         <span class="mark" style="--m:var(--orange)"></span>
         <div>
-          <h3>Figures are attributed, never summed.</h3>
-          <p>A modelled estimate and a government count are two readings of one reality — shown
-            side by side with their sources, never added into a false total.</p>
+          <h3>Sources stay separate.</h3>
+          <p>A modelled estimate and a government count are two views of one event. We show both,
+            each with its source. We never add them together.</p>
         </div>
       </div>
       <div class="rule">
         <span class="mark" style="--m:var(--green)"></span>
         <div>
-          <h3>Quiet is information.</h3>
-          <p>The page refreshes every morning even when nothing crossed the line, so silence
-            means calm — not a broken pipe.</p>
+          <h3>Quiet mornings still publish.</h3>
+          <p>The page updates every day, even when nothing is wrong. Silence means calm, not a
+            broken system.</p>
         </div>
       </div>
       <div class="rule">
         <span class="mark" style="--m:var(--signal)"></span>
         <div>
-          <h3>Deterministic by design.</h3>
-          <p>Every decision — what shows, how it ranks, what merged — is code you can read and
-            test. A language model only ever writes the prose, never a number.</p>
+          <h3>Code decides, not a model.</h3>
+          <p>What shows, how it ranks, and what merges are all fixed in code you can read and
+            test. A language model only writes the summary text, never a number.</p>
         </div>
       </div>
     </div>
   </section>
 
   <section id="feeds">
-    <p class="eyebrow">Three feeds · three kinds of truth</p>
-    <h2>Not three views of one thing.</h2>
-    <p class="section-lead">Each feed is a different object type at a different speed. The desk
-      reads all three and resolves them into one situation per line.</p>
+    <h2>Three feeds, three kinds of record.</h2>
+    <p class="section-lead">Each feed is a different kind of record, arriving at a different
+      speed. The report combines them into one line per event.</p>
     <div class="feeds">
       <div class="feed">
         <span class="name">USGS</span>
         <span class="role">Earthquakes, in seconds.</span>
-        <p>A physical event, machine-measured — the ground-truth reading for where and how hard
-          the earth moved.</p>
-        <div class="meta">seconds-latent · earthquakes only</div>
+        <p>The physical measurement of where an earthquake struck and how strong it was.</p>
+        <div class="meta">seconds &middot; earthquakes only</div>
       </div>
       <div class="feed">
         <span class="name">GDACS</span>
         <span class="role">Impact alerts, in minutes.</span>
-        <p>Earthquakes, cyclones, floods, wildfires and volcanoes — each colour-coded by modelled
-          human impact, versioned as the event evolves.</p>
-        <div class="meta">minutes-latent · EQ / TC / FL / WF / VO</div>
+        <p>Earthquakes, cyclones, floods, wildfires, and volcanoes, each rated by likely human
+          impact.</p>
+        <div class="meta">minutes &middot; EQ, TC, FL, WF, VO</div>
       </div>
       <div class="feed">
         <span class="name">ReliefWeb</span>
         <span class="role">Curated crises, in days.</span>
         <p>Everything above, plus epidemics and conflict. If humanitarian editors made a page for
-          it, it has already cleared the bar for attention.</p>
-        <div class="meta">days-latent · + epidemic + conflict</div>
+          it, it already matters.</p>
+        <div class="meta">days &middot; adds epidemics, conflict</div>
       </div>
     </div>
-    <p class="feeds-note">The same earthquake can arrive from all three feeds. Because a GDACS
-      quake is <b>built from</b> the USGS reading, agreement between them isn't corroboration —
-      it's one source counted twice. The desk knows the difference, and merges them into a single
-      line.</p>
+    <p class="feeds-note">The same earthquake can arrive from all three feeds. A GDACS quake is
+      built from the USGS reading, so the two agreeing is not extra proof. The report knows this
+      and shows them as <b>one line</b>.</p>
   </section>
 
-  <section id="method">
-    <p class="eyebrow">How it works</p>
-    <h2>Deterministic first. The model comes last, and only sometimes.</h2>
-    <div class="flow" role="list" aria-label="pipeline">
-      <span class="step" role="listitem">fetch</span><span class="sep">›</span>
-      <span class="step" role="listitem">normalize</span><span class="sep">›</span>
-      <span class="step" role="listitem">decluster</span><span class="sep">›</span>
-      <span class="step" role="listitem">cross-feed join</span><span class="sep">›</span>
-      <span class="step" role="listitem">threshold</span><span class="sep">›</span>
-      <span class="step" role="listitem">render</span><span class="sep">›</span>
-      <span class="step loud" role="listitem">narrate · loud only</span>
+  <section id="how">
+    <h2>How it works.</h2>
+    <div class="flow" role="list" aria-label="pipeline steps">
+      <span class="step" role="listitem">fetch</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">clean</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">group</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">match across feeds</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">rank</span><span class="sep">&rsaquo;</span>
+      <span class="step" role="listitem">build page</span><span class="sep">&rsaquo;</span>
+      <span class="step loud" role="listitem">summarize, only if changed</span>
     </div>
-    <p class="method-body">Every morning a scheduled job fetches the three feeds, normalizes them
-      to a common model, declusters aftershock swarms, resolves the same event across feeds,
-      applies a fixed attention threshold, and renders the page — all in plain, tested Python.
-      <b>Only if something material changed since yesterday</b> is a language model woken to write
-      the short narrative at the top. It never decides what's shown, and never touches a figure.
-      The result is committed and published — the same page, byte-for-byte, on a quiet morning.</p>
+    <p class="method-body">Each morning a scheduled job fetches the three feeds, cleans them into
+      one format, groups aftershocks, matches the same event across feeds, ranks by impact, and
+      builds the page. All of this is plain, tested Python. <b>Only if something important changed
+      since yesterday</b> does a language model write the short summary at the top. It never
+      chooses what to show, and never changes a number.</p>
   </section>
 
   <section id="limits">
-    <p class="eyebrow">Coverage &amp; limits</p>
-    <h2>What this doesn't claim.</h2>
+    <h2>What it does not do.</h2>
     <ul class="limits">
-      <li><b>No casualty modelling.</b> We consume the figures the experts publish; we don't forecast exposure or invent counts.</li>
-      <li><b>"Onshore" is approximated</b> by country outline, so a quake just off a coast can read as offshore. The page says so.</li>
-      <li><b>ReliefWeb runs in RSS mode</b> for now — status and full backfill are limited until the API is enabled. Flagged on every report.</li>
-      <li><b>Coverage is bounded:</b> USGS earthquakes, GDACS hazards, and ReliefWeb-curated crises — not everything, and the banner never pretends otherwise.</li>
+      <li><b>It does not estimate casualties.</b> It reports the figures that experts publish.</li>
+      <li><b>Onshore is approximate.</b> It uses country outlines, so a quake just off the coast can look offshore.</li>
+      <li><b>ReliefWeb uses the public RSS feed for now,</b> so status and older records are limited. Each report says so.</li>
+      <li><b>Coverage is limited</b> to USGS earthquakes, GDACS hazards, and ReliefWeb crises. The report states what it does not cover.</li>
     </ul>
   </section>
 
   <section id="report" class="final">
-    <p class="eyebrow">The desk is open</p>
-    <h2>See what crossed the line this morning.</h2>
-    <p class="section-lead" style="margin-inline:auto">One page, ranked by human impact, honest about what it can't see.</p>
+    <h2>See this morning's report.</h2>
+    <p class="section-lead" style="margin-inline:auto">One page, ranked by impact, clear about
+      what it cannot see.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">→</span></a>
-      <a class="btn btn-ghost" href="https://github.com/leejianrong/hadr-starter">Source &amp; method on GitHub <span class="arr">→</span></a>
+      <a class="btn btn-primary" href="./dashboard.html">View this morning's report <span class="arr">&rarr;</span></a>
+      <a class="btn btn-ghost" href="https://github.com/leejianrong/hadr-starter">Source on GitHub <span class="arr">&rarr;</span></a>
     </div>
   </section>
 
@@ -432,9 +369,9 @@
 
 <footer>
   <div class="wrap">
-    HADR Monitor — a deterministic humanitarian situation report.<br>
-    Published daily 08:30 SGT (UTC+8) · times shown in UTC and SGT.<br>
-    Severity consumed from USGS PAGER &amp; GDACS · figures never summed across sources.
+    HADR Monitor, a daily humanitarian disaster report.<br>
+    Published every day at 08:30 Singapore time (UTC+8). Times shown in UTC and SGT.<br>
+    Severity comes from USGS PAGER and GDACS. Figures are never added across sources.
   </div>
 </footer>
 
